@@ -212,7 +212,7 @@ python CrawlerServiceEngine.py
 > 
 > 如果想使用AI进行情报分析，需要配置 [ai_client_config.py](_config/ai_client_config.py) 。由于AI服务配置比较复杂，因此直接使用python文件而非json文件。
 > 
-> 配置请参考：[AIClientConfigExample.py](AIClientCenter/AIClientConfigExample.py) ，按需要复制修改对应项即可。
+> 配置请参考：[AIClientConfigExample.py](AIClientCenter/ai_client_config_example.py) ，按需要复制修改对应项即可。
 > 
 
 #### 启动
