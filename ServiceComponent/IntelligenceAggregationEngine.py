@@ -299,13 +299,14 @@ class IntelligenceAggregationEngine:
             doc_cleaner: callable,
             limit: int = 200,
             sort_by: str = "score",
-            descending: bool = True
+            descending: bool = True,
+            source: str = "offline"
     ) -> Dict[str, Any]:
         """
         组合业务逻辑：获取摘要，提取文章本体，清洗，并按请求排序。
         """
-        summary = self.get_latest_clusters_summary(
-            sort_by="size", descending=True, limit=limit, include_noise=False
+        summary = self.get_clusters_summary(
+            source=source, sort_by="size", descending=True, limit=limit, include_noise=False
         )
         clusters = summary.get("clusters") or []
         if not clusters:
@@ -361,13 +362,14 @@ class IntelligenceAggregationEngine:
             offset: int = 0,
             limit: int = 100,
             sort_by: str = "relevance",
-            descending: bool = True
+            descending: bool = True,
+            source: str = "offline"
     ) -> Dict[str, Any]:
         """
         组合业务逻辑：获取簇内成员切片，提取文章本体，清洗，并按请求排序。
         """
-        latest = self.get_latest_offline() or {}
-        clusters = latest.get("clusters") or {}
+        state = self.get_cluster_state(source=source) or {}
+        clusters = state.get("clusters") or {}
         cobj = clusters.get(cluster_id)
         if not cobj:
             raise ValueError(f"cluster_id not found: {cluster_id}")
@@ -450,6 +452,111 @@ class IntelligenceAggregationEngine:
         off = self.get_latest_offline() or {}
         m2 = off.get("doc_to_cluster") or {}
         return m2.get(doc_id)
+
+    def get_cluster_state(self, source: str = "offline") -> Dict[str, Any]:
+        """
+        Return raw aggregation state.
+
+        "online" is the runtime state initialized from latest offline and then
+        incrementally updated by VectorDB upsert events. It falls back to
+        offline when the online state is unavailable.
+        """
+        source = (source or "offline").lower().strip()
+        if source == "online":
+            online = self.get_online_state() or {}
+            if "clusters" in online:
+                return online
+        return self.get_latest_offline() or {}
+
+    def get_clusters_summary(
+            self,
+            *,
+            source: str = "offline",
+            sort_by: str = "size",  # "size" | "last_seen" | "cluster_id"
+            descending: bool = True,
+            limit: int = 200,
+            include_noise: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Return a compact cluster summary from online runtime state or latest
+        offline result.
+        """
+        requested_source = (source or "offline").lower().strip()
+        state = self.get_cluster_state(source=requested_source) or {}
+        actual_source = "online" if requested_source == "online" and "base_version" in state else "offline"
+
+        if not state or (state.get("version") is None and state.get("base_version") is None):
+            return {
+                "plan_id": self.plan_spec.plan_id,
+                "collection_name": self.plan_spec.collection_name,
+                "version": None,
+                "base_version": None,
+                "source": requested_source,
+                "actual_source": actual_source,
+                "created_at": None,
+                "updated_at": state.get("updated_at"),
+                "time_range": None,
+                "method": None,
+                "params": None,
+                "n_points": 0,
+                "n_clusters": 0,
+                "n_noise": 0,
+                "clusters": [],
+                "noise": {"size": 0, "members_count": 0},
+            }
+
+        clusters_obj = state.get("clusters") or {}
+        clusters_list: List[Dict[str, Any]] = []
+
+        for cid, c in clusters_obj.items():
+            if not isinstance(c, dict):
+                continue
+            clusters_list.append({
+                "cluster_id": cid,
+                "size": int(c.get("size") or 0),
+                "repr_doc_id": c.get("repr_doc_id"),
+                "repr_preview": c.get("repr_preview") or "",
+                "last_seen": c.get("last_seen"),
+            })
+
+        if sort_by == "size":
+            key_fn = lambda x: x.get("size", 0)
+        elif sort_by == "last_seen":
+            key_fn = lambda x: (x.get("last_seen") or 0)
+        else:
+            key_fn = lambda x: x.get("cluster_id") or ""
+
+        clusters_list.sort(key=key_fn, reverse=bool(descending))
+
+        if limit and limit > 0:
+            clusters_list = clusters_list[: int(limit)]
+
+        noise = state.get("noise") or {}
+        noise_size = int(noise.get("size") or 0)
+        doc_to_cluster = state.get("doc_to_cluster") or {}
+
+        out = {
+            "plan_id": state.get("plan_id") or self.plan_spec.plan_id,
+            "collection_name": state.get("collection_name") or self.plan_spec.collection_name,
+            "version": state.get("version") or state.get("base_version"),
+            "base_version": state.get("base_version"),
+            "source": requested_source,
+            "actual_source": actual_source,
+            "created_at": state.get("created_at"),
+            "updated_at": state.get("updated_at"),
+            "time_range": state.get("time_range"),
+            "method": state.get("method"),
+            "params": state.get("params") or {},
+            "n_points": int(state.get("n_points") or len(doc_to_cluster)),
+            "n_clusters": int(state.get("n_clusters") or len(clusters_obj)),
+            "n_noise": int(state.get("n_noise") or noise_size),
+            "clusters": clusters_list,
+        }
+
+        if include_noise:
+            out["noise"] = {"size": noise_size, "members_count": noise_size}
+
+        return out
 
     def get_latest_clusters_summary(
             self,

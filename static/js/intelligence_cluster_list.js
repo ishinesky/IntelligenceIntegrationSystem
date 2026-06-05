@@ -12,12 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    async function loadClusters() {
+    async function loadClusters(forceRefresh = false) {
         const limit = limitSelect ? limitSelect.value : 50;
         renderer.showLoading();
 
         try {
-            const response = await fetch(`/api/clusters/latest?limit=${limit}`);
+            const refreshParam = forceRefresh ? '&refresh=1' : '';
+            const response = await fetch(`/api/clusters/latest?source=online&limit=${limit}${refreshParam}`);
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
 
             const data = await response.json();
@@ -117,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
         membersDiv.innerHTML = `<div class="loading-spinner"><i class="bi bi-arrow-repeat article-spinner"></i> Loading members...</div>`;
 
         try {
-            const resp = await fetch(`/api/clusters/${clusterId}/members?limit=500`);
+            const resp = await fetch(`/api/clusters/${clusterId}/members?source=online&limit=500`);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
             const data = await resp.json();
@@ -154,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    if (refreshBtn) refreshBtn.addEventListener('click', loadClusters);
+    if (refreshBtn) refreshBtn.addEventListener('click', () => loadClusters(true));
     if (limitSelect) limitSelect.addEventListener('change', loadClusters);
 
     // 初始加载

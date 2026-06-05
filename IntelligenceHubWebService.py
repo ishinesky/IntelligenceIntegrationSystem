@@ -4,6 +4,7 @@ import re
 import json
 import logging
 import datetime
+import time
 import dateutil
 import threading
 import traceback
@@ -211,6 +212,9 @@ class IntelligenceHubWebService:
         # ---------------- Parameters ----------------
 
         self.intelligence_hub = intelligence_hub
+        self.cluster_cache_ttl_sec = 15.0
+        self._cluster_response_cache = {}
+        self._cluster_response_cache_lock = threading.RLock()
         self.access_manager = access_manager
         self.rss_publisher = rss_publisher
         self.wsgi_app = None
@@ -694,11 +698,30 @@ class IntelligenceHubWebService:
                 limit = int(request.args.get("limit", 200))
                 client_sort_by = request.args.get("sort_by", "score")
                 desc = request.args.get("desc", "1") in ("1", "true", "True", "yes", "Y", "y")
+                source = request.args.get("source", "online").lower().strip()
+                refresh = request.args.get("refresh", "0") in ("1", "true", "True", "yes", "Y", "y")
+                cache_key = ("clusters_latest", source, limit, client_sort_by, desc)
 
                 hub = self.intelligence_hub
                 agg = getattr(hub, "aggregation_engine_summary", None)
                 if not agg:
                     return jsonify({"error": "Aggregation engine not configured"}), 501
+
+                if not refresh:
+                    with self._cluster_response_cache_lock:
+                        now = time.time()
+                        for key, item in list(self._cluster_response_cache.items()):
+                            if now - item["created_at"] > self.cluster_cache_ttl_sec:
+                                self._cluster_response_cache.pop(key, None)
+                        cached = self._cluster_response_cache.get(cache_key)
+                        if cached and now - cached["created_at"] <= self.cluster_cache_ttl_sec:
+                            payload = dict(cached["payload"])
+                            payload["cache"] = {
+                                "hit": True,
+                                "ttl_sec": self.cluster_cache_ttl_sec,
+                                "created_at": cached["created_at"],
+                            }
+                            return jsonify(payload), 200
 
                 # 建立一个闭包透传 fetcher 给 engine
                 def doc_fetcher(uuids):
@@ -709,8 +732,19 @@ class IntelligenceHubWebService:
                     doc_cleaner=exclude_raw_data,
                     limit=limit,
                     sort_by=client_sort_by,
-                    descending=desc
+                    descending=desc,
+                    source=source
                 )
+                result["cache"] = {
+                    "hit": False,
+                    "ttl_sec": self.cluster_cache_ttl_sec,
+                    "created_at": time.time(),
+                }
+                with self._cluster_response_cache_lock:
+                    self._cluster_response_cache[cache_key] = {
+                        "created_at": result["cache"]["created_at"],
+                        "payload": result,
+                    }
 
                 return jsonify(result), 200
 
@@ -725,11 +759,30 @@ class IntelligenceHubWebService:
                 offset = int(request.args.get("offset", 0))
                 sort_by = request.args.get("sort_by", "relevance")
                 desc = request.args.get("desc", "1") in ("1", "true", "True")
+                source = request.args.get("source", "online").lower().strip()
+                refresh = request.args.get("refresh", "0") in ("1", "true", "True", "yes", "Y", "y")
+                cache_key = ("cluster_members", source, cluster_id, offset, limit, sort_by, desc)
 
                 hub = self.intelligence_hub
                 agg = getattr(hub, "aggregation_engine_summary", None)
                 if not agg:
                     return jsonify({"error": "Aggregation engine not configured"}), 501
+
+                if not refresh:
+                    with self._cluster_response_cache_lock:
+                        now = time.time()
+                        for key, item in list(self._cluster_response_cache.items()):
+                            if now - item["created_at"] > self.cluster_cache_ttl_sec:
+                                self._cluster_response_cache.pop(key, None)
+                        cached = self._cluster_response_cache.get(cache_key)
+                        if cached and now - cached["created_at"] <= self.cluster_cache_ttl_sec:
+                            payload = dict(cached["payload"])
+                            payload["cache"] = {
+                                "hit": True,
+                                "ttl_sec": self.cluster_cache_ttl_sec,
+                                "created_at": cached["created_at"],
+                            }
+                            return jsonify(payload), 200
 
                 def doc_fetcher(uuids):
                     return hub.get_intelligence(uuids, light_weight=True)
@@ -741,8 +794,20 @@ class IntelligenceHubWebService:
                     offset=offset,
                     limit=limit,
                     sort_by=sort_by,
-                    descending=desc
+                    descending=desc,
+                    source=source
                 )
+                result["source"] = source
+                result["cache"] = {
+                    "hit": False,
+                    "ttl_sec": self.cluster_cache_ttl_sec,
+                    "created_at": time.time(),
+                }
+                with self._cluster_response_cache_lock:
+                    self._cluster_response_cache[cache_key] = {
+                        "created_at": result["cache"]["created_at"],
+                        "payload": result,
+                    }
 
                 return jsonify(result), 200
 
