@@ -312,15 +312,31 @@ class IntelligenceAggregationEngine:
         if not clusters:
             return summary
 
-        repr_ids = list(dict.fromkeys([c.get("repr_doc_id") for c in clusters if c.get("repr_doc_id")]))
-        repr_docs = doc_fetcher(repr_ids) if repr_ids else []
-        if isinstance(repr_docs, dict): repr_docs = [repr_docs]
-        repr_map = {d.get("UUID"): d for d in (repr_docs or []) if isinstance(d, dict)}
+        state = self.get_cluster_state(source=source) or {}
+        raw_clusters = state.get("clusters") or {}
+        cluster_members: Dict[str, List[str]] = {}
+        fetch_ids = []
+        for c in clusters:
+            cid = c.get("cluster_id")
+            raw_cluster = raw_clusters.get(cid) or {}
+            members = list(raw_cluster.get("members") or [])
+            if not members and c.get("repr_doc_id"):
+                members = [c.get("repr_doc_id")]
+            cluster_members[cid] = members
+            fetch_ids.extend(members)
+
+        fetch_ids = list(dict.fromkeys([x for x in fetch_ids if x]))
+        fetched_docs = doc_fetcher(fetch_ids) if fetch_ids else []
+        if isinstance(fetched_docs, dict):
+            fetched_docs = [fetched_docs]
+        doc_map = {d.get("UUID"): d for d in (fetched_docs or []) if isinstance(d, dict)}
 
         out_clusters = []
         for c in clusters:
-            uuid = c.get("repr_doc_id")
-            doc = repr_map.get(uuid) or {}
+            cid = c.get("cluster_id")
+            member_docs = [doc_map[mid] for mid in cluster_members.get(cid, []) if mid in doc_map]
+            doc = max(member_docs, key=self._get_archived_sort_value) if member_docs else {}
+            uuid = doc.get("UUID") or c.get("repr_doc_id")
             title = doc.get("EVENT_TITLE") or doc.get("title") or "(No Title)"
             brief = doc.get("EVENT_BRIEF") or ""
 
@@ -332,6 +348,8 @@ class IntelligenceAggregationEngine:
                 "size": c.get("size", 0),
                 "last_seen": c.get("last_seen"),
                 "repr_uuid": uuid,
+                "cluster_repr_uuid": c.get("repr_doc_id"),
+                "repr_strategy": "latest_archived",
                 "repr_title": title,
                 "repr_brief": brief,
                 "href": f"/intelligence/{uuid}" if uuid else "#",
@@ -345,7 +363,7 @@ class IntelligenceAggregationEngine:
             )
         elif sort_by == "time":
             out_clusters.sort(
-                key=lambda x: str(x.get("repr_doc", {}).get("APPENDIX", {}).get("__TIME_ARCHIVED__", "")),
+                key=lambda x: self._get_archived_sort_value(x.get("repr_doc", {})),
                 reverse=descending
             )
         elif sort_by == "size":
@@ -353,6 +371,22 @@ class IntelligenceAggregationEngine:
 
         summary["clusters"] = out_clusters
         return summary
+
+    def _get_archived_sort_value(self, doc: Dict[str, Any]) -> float:
+        appendix = doc.get("APPENDIX") or {}
+        raw = appendix.get("__TIME_ARCHIVED__")
+        if raw is None:
+            return 0.0
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        if isinstance(raw, datetime.datetime):
+            return raw.timestamp()
+        if isinstance(raw, str):
+            try:
+                return datetime.datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return 0.0
+        return 0.0
 
     def build_rich_cluster_members(
             self,
@@ -379,18 +413,23 @@ class IntelligenceAggregationEngine:
 
         offset = max(0, offset)
         limit = max(1, min(500, limit))
-        sub = members[offset: offset + limit]
+        if sort_by in ("score", "time"):
+            fetch_members = members
+        else:
+            fetch_members = members[offset: offset + limit]
 
-        docs = doc_fetcher(sub) if sub else []
-        if isinstance(docs, dict): docs = [docs]
+        docs = doc_fetcher(fetch_members) if fetch_members else []
+        if isinstance(docs, dict):
+            docs = [docs]
 
-        rank = {u: i for i, u in enumerate(sub)}
+        rank = {u: i for i, u in enumerate(fetch_members)}
         cleaned_docs = doc_cleaner([d for d in docs if isinstance(d, dict)])
         cleaned_map = {d.get("UUID"): d for d in cleaned_docs}
 
         items = []
-        for uid in sub:
-            if uid not in rank: continue
+        for uid in fetch_members:
+            if uid not in rank:
+                continue
             cleaned_doc = cleaned_map.get(uid, {})
             title = cleaned_doc.get("EVENT_TITLE") or cleaned_doc.get("title") or "(No Title)"
 
@@ -408,12 +447,15 @@ class IntelligenceAggregationEngine:
             )
         elif sort_by == "time":
             items.sort(
-                key=lambda x: str(x["doc"].get("APPENDIX", {}).get("__TIME_ARCHIVED__", "")),
+                key=lambda x: self._get_archived_sort_value(x["doc"]),
                 reverse=descending
             )
         else:
             # relevance (Default)
             items.sort(key=lambda x: rank.get(x["uuid"], 10 ** 9))
+
+        if sort_by in ("score", "time"):
+            items = items[offset: offset + limit]
 
         return {
             "cluster_id": cluster_id,

@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const refreshParam = forceRefresh ? '&refresh=1' : '';
-            const response = await fetch(`/api/clusters/latest?source=online&limit=${limit}${refreshParam}`);
+            const response = await fetch(`/api/clusters/latest?source=online&sort_by=time&desc=1&limit=${limit}${refreshParam}`);
             if (!response.ok) throw new Error(`API Error: ${response.status}`);
 
             const data = await response.json();
@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
         membersDiv.innerHTML = `<div class="loading-spinner"><i class="bi bi-arrow-repeat article-spinner"></i> Loading members...</div>`;
 
         try {
-            const resp = await fetch(`/api/clusters/${clusterId}/members?source=online&limit=500`);
+            const resp = await fetch(`/api/clusters/${clusterId}/members?source=online&sort_by=time&desc=1&limit=500`);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
             const data = await resp.json();

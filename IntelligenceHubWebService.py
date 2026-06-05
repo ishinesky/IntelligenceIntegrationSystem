@@ -696,7 +696,7 @@ class IntelligenceHubWebService:
         def api_clusters_latest():
             try:
                 limit = int(request.args.get("limit", 200))
-                client_sort_by = request.args.get("sort_by", "score")
+                client_sort_by = request.args.get("sort_by", "time")
                 desc = request.args.get("desc", "1") in ("1", "true", "True", "yes", "Y", "y")
                 source = request.args.get("source", "online").lower().strip()
                 refresh = request.args.get("refresh", "0") in ("1", "true", "True", "yes", "Y", "y")
@@ -757,7 +757,7 @@ class IntelligenceHubWebService:
             try:
                 limit = int(request.args.get("limit", 100))
                 offset = int(request.args.get("offset", 0))
-                sort_by = request.args.get("sort_by", "relevance")
+                sort_by = request.args.get("sort_by", "time")
                 desc = request.args.get("desc", "1") in ("1", "true", "True")
                 source = request.args.get("source", "online").lower().strip()
                 refresh = request.args.get("refresh", "0") in ("1", "true", "True", "yes", "Y", "y")
