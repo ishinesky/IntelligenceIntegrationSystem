@@ -298,15 +298,17 @@ class IntelligenceAggregationEngine:
             doc_fetcher: callable,
             doc_cleaner: callable,
             limit: int = 200,
-            sort_by: str = "score",
             descending: bool = True,
             source: str = "offline"
     ) -> Dict[str, Any]:
         """
-        组合业务逻辑：获取摘要，提取文章本体，清洗，并按请求排序。
+        组合业务逻辑：获取簇的摘要。
+        外层列表永远按代表性文档的总评分 (__TOTAL_SCORE__) 排列。
         """
+        # 注意：这里 limit=0 表示拉取全部簇，或者你可以设一个较大的安全值(比如1000)，
+        # 绝对不能在这里用 200 截断，否则高分但体积小的簇会被提前丢弃！
         summary = self.get_clusters_summary(
-            source=source, sort_by="size", descending=True, limit=limit, include_noise=False
+            source=source, sort_by="size", descending=True, limit=0, include_noise=False
         )
         clusters = summary.get("clusters") or []
         if not clusters:
@@ -316,6 +318,7 @@ class IntelligenceAggregationEngine:
         raw_clusters = state.get("clusters") or {}
         cluster_members: Dict[str, List[str]] = {}
         fetch_ids = []
+
         for c in clusters:
             cid = c.get("cluster_id")
             raw_cluster = raw_clusters.get(cid) or {}
@@ -356,18 +359,15 @@ class IntelligenceAggregationEngine:
                 "repr_doc": cleaned_doc
             })
 
-        if sort_by == "score":
-            out_clusters.sort(
-                key=lambda x: float(x.get("repr_doc", {}).get("APPENDIX", {}).get("__TOTAL_SCORE__", 0.0) or 0.0),
-                reverse=descending
-            )
-        elif sort_by == "time":
-            out_clusters.sort(
-                key=lambda x: self._get_archived_sort_value(x.get("repr_doc", {})),
-                reverse=descending
-            )
-        elif sort_by == "size":
-            out_clusters.sort(key=lambda x: x.get("size", 0), reverse=descending)
+        # 外层强制执行：永远按评分排序
+        out_clusters.sort(
+            key=lambda x: float(x.get("repr_doc", {}).get("APPENDIX", {}).get("__TOTAL_SCORE__", 0.0) or 0.0),
+            reverse=descending
+        )
+
+        # 排序完成之后，再根据用户请求的 limit 进行分页/截断
+        if limit and limit > 0:
+            out_clusters = out_clusters[:limit]
 
         summary["clusters"] = out_clusters
         return summary
@@ -395,12 +395,13 @@ class IntelligenceAggregationEngine:
             doc_cleaner: callable,
             offset: int = 0,
             limit: int = 100,
-            sort_by: str = "relevance",
+            sort_by: str = "relevance",  # 支持 "relevance", "score", "time"
             descending: bool = True,
             source: str = "offline"
     ) -> Dict[str, Any]:
         """
-        组合业务逻辑：获取簇内成员切片，提取文章本体，清洗，并按请求排序。
+        组合业务逻辑：获取簇内成员切片。
+        内层支持按 relevance(默认簇内顺序)、score(文章评分) 或 time(归档时间) 排序。
         """
         state = self.get_cluster_state(source=source) or {}
         clusters = state.get("clusters") or {}
@@ -413,6 +414,9 @@ class IntelligenceAggregationEngine:
 
         offset = max(0, offset)
         limit = max(1, min(500, limit))
+
+        # 关键分流：如果按相关度排，直接信任 HDBSCAN 生成的 members 顺序，提前切片省内存；
+        # 如果按分数或时间排，必须拿到所有文档的具体字段后才能排序，所以要传全量 members。
         if sort_by in ("score", "time"):
             fetch_members = members
         else:
@@ -422,7 +426,9 @@ class IntelligenceAggregationEngine:
         if isinstance(docs, dict):
             docs = [docs]
 
+        # 记录原始的“簇心相关度”排名索引，用于 relevance 排序恢复顺序
         rank = {u: i for i, u in enumerate(fetch_members)}
+
         cleaned_docs = doc_cleaner([d for d in docs if isinstance(d, dict)])
         cleaned_map = {d.get("UUID"): d for d in cleaned_docs}
 
@@ -440,6 +446,7 @@ class IntelligenceAggregationEngine:
                 "doc": cleaned_doc
             })
 
+        # 针对全量拿到的 items 重新排序
         if sort_by == "score":
             items.sort(
                 key=lambda x: float(x["doc"].get("APPENDIX", {}).get("__TOTAL_SCORE__", 0.0) or 0.0),
@@ -451,9 +458,10 @@ class IntelligenceAggregationEngine:
                 reverse=descending
             )
         else:
-            # relevance (Default)
+            # relevance (Default) 默认排序，按原本在 members 里的距离/排名
             items.sort(key=lambda x: rank.get(x["uuid"], 10 ** 9))
 
+        # 如果是全量获取后重新排序的，排序完在这里执行切片
         if sort_by in ("score", "time"):
             items = items[offset: offset + limit]
 

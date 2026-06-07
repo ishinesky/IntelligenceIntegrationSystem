@@ -731,7 +731,6 @@ class IntelligenceHubWebService:
                     doc_fetcher=doc_fetcher,
                     doc_cleaner=exclude_raw_data,
                     limit=limit,
-                    sort_by=client_sort_by,
                     descending=desc,
                     source=source
                 )
