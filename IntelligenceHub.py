@@ -29,6 +29,7 @@ from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatistics
 from ServiceComponent.AsyncTranslationPatch import AsyncTranslationPatch, needs_translation
 from ServiceComponent.IntelligenceAggregationEngine import IntelligenceAggregationEngine, generate_aggregation_plan
 from ServiceComponent.IntelligenceEntityFrequencyEngine import EntityFrequencyEngine
+from ServiceComponent.IntelligenceSubmissionStatisticsEngine import IntelligenceSubmissionStatisticsEngine
 from Tools.DateTimeUtility import Clock, time_str_to_datetime, get_aware_time, time_digit_list_to_datetime
 from Tools.ProcessCotrolException import positioning_exception_context, ProcessSkip, PositioningException
 
@@ -114,6 +115,8 @@ class IntelligenceHub:
             db_path=os.path.join(DATA_PATH, 'entity_frequency.db'),
             mongo_db_archive=self.mongo_db_archive,
         )
+
+        self.submission_statistics_engine = IntelligenceSubmissionStatisticsEngine()
 
         self.vector_db_engine_summary: Optional[IntelligenceVectorDBEngine] = None
         self.vector_db_engine_full_text: Optional[IntelligenceVectorDBEngine] = None
@@ -319,8 +322,13 @@ class IntelligenceHub:
                 validated_data['collect_time'] = get_aware_time()
             validated_data[APPENDIX_TIME_POST] = get_aware_time()
 
-            return IntelligenceHub.Error(error_list=[error_text]) \
-                if error_text else self._enqueue_collected_data(validated_data)
+            if error_text:
+                return IntelligenceHub.Error(error_list=[error_text])
+
+            enqueue_result = self._enqueue_collected_data(validated_data)
+            if enqueue_result:
+                self._record_submission_statistics(validated_data)
+            return enqueue_result
 
         except Exception as e:
             logger.error(f"Submit collected data API exception: {str(e)}")
@@ -511,6 +519,9 @@ class IntelligenceHub:
 
     def get_statistics_engine(self) -> IntelligenceStatisticsEngine:
         return IntelligenceStatisticsEngine(self.mongo_db_archive)
+
+    def get_submission_statistics_engine(self) -> IntelligenceSubmissionStatisticsEngine:
+        return self.submission_statistics_engine
 
     # ---------------------------------------------------- Updates -----------------------------------------------------
 
@@ -1160,6 +1171,31 @@ class IntelligenceHub:
         self._cache_original_data(data)
         self.original_queue.put(data)
         return True
+
+    def _record_submission_statistics(self, data: dict):
+        """
+        Record submission source statistics.
+        Extracts the source domain from informant and tracks submission counts
+        by time granularity plus the latest submission info.
+        """
+        try:
+            informant = str(data.get('informant', '')).strip()
+            title = str(data.get('title', '')).strip()
+            _uuid = str(data.get('UUID', '')).strip()
+            submit_time = data.get(APPENDIX_TIME_POST) or get_aware_time()
+
+            if not informant or not _uuid:
+                return
+
+            if self.submission_statistics_engine:
+                self.submission_statistics_engine.record_submission(
+                    informant=informant,
+                    title=title,
+                    uuid=_uuid,
+                    submit_time=submit_time,
+                )
+        except Exception as e:
+            logger.warning(f"Record submission statistics failed: {e}")
 
     def _process_appendix_time(self, original_data: dict, processed_data: dict):
         if pub_time := original_data.get('pub_time', None):

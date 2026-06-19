@@ -70,6 +70,7 @@
   - `IntelligenceHubDefines_v2.py`：Pydantic 数据模型（`CollectedData`, `ArchivedData`, `ProcessedData` 等）
   - `IntelligenceAnalyzerProxy.py`：AI 分析代理，调用 LLM 并解析结果
   - `IntelligenceQueryEngine.py` / `IntelligenceStatisticsEngine.py`：MongoDB 查询与统计
+  - `IntelligenceSubmissionStatisticsEngine.py`：**来源提交统计引擎**，按时间粒度记录各来源域名的提交数量与最后提交信息（内存统计，服务重启后清零）
   - `IntelligenceVectorDBEngine.py`：向量检索封装
   - `IntelligenceAggregationEngine.py` / `DynamicGraphEngine.py`：情报聚合与态势图谱推演
   - `IntelligenceScoringEngine.py`：评分引擎
@@ -169,6 +170,8 @@ python IntelligenceHubLauncher.py
 - 默认监听 `0.0.0.0:5000`
 - 公开页面：`http://localhost:5000/`
 - 后台登录：`http://localhost:5000/login`
+- 数据源状态监控（登录后）：`http://localhost:5000/statistics/dashboard`
+  - 重点展示各来源最近一次提交时间、异常（长时间未提交）数据源、提交趋势，便于及时发现问题源
 
 **B. 爬虫服务**
 ```bash
@@ -274,6 +277,7 @@ pytest Test/
 
 | 现象 | 排查方向 |
 |------|----------|
+| 来源提交统计无数据 | 检查 `IntelligenceHub.py` 中 `_record_submission_statistics()` 日志；注意内存统计服务重启后清零 |
 | AI 分析线程一直等待客户端 | 检查 `_config/ai_client_config.py` 是否配置正确；检查 AI 服务余额/网络 |
 | VectorDB 无法初始化 | 确认 `VectorDBBService.py` 已启动；确认模型路径正确；查看 `_log/iis.log` |
 | 爬虫不执行 | 检查 `CrawlerServiceEngine.py` 是否启动；检查 `CrawlTasks/` 目录下模块是否有语法错误 |

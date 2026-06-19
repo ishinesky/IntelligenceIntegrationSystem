@@ -18,6 +18,8 @@
 
 #### Statistics
 
++ [IHub Statistics](/statistics/dashboard)
+
 + [Rate Statistics](/statistics/score_distribution.html)
 
 + [Entity Statistics](/statistics/entity_frequency/page)

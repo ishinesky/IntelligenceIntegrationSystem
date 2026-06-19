@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据源状态监控</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8f9fa;
+            padding-top: 20px;
+            padding-bottom: 40px;
+        }
+
+        .page-title {
+            margin-bottom: 6px;
+        }
+
+        .card {
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: none;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+
+        .table-container {
+            max-height: 420px;
+            overflow-y: auto;
+        }
+
+        .text-danger-strong {
+            color: #dc3545;
+            font-weight: 600;
+        }
+
+        .gap-hours {
+            font-weight: 600;
+        }
+
+        .gap-warning {
+            color: #dc3545;
+        }
+
+        .gap-ok {
+            color: #198754;
+        }
+
+        .last-title {
+            max-width: 360px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h3 class="page-title"><i class="fas fa-heartbeat me-2"></i>数据源状态监控</h3>
+    <p class="text-muted mb-3">
+        及时发现提交异常或长时间未更新的数据源。
+        <span class="small">异常判断：来源最后提交时间超过下方“异常阈值”小时数。</span>
+    </p>
+
+    <!-- Control panel -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row align-items-end">
+                <div class="col-md-4">
+                    <label for="dateRange" class="form-label">时间范围</label>
+                    <input type="text" id="dateRange" class="form-control" placeholder="选择时间范围">
+                    <input type="hidden" id="startTime">
+                    <input type="hidden" id="endTime">
+                </div>
+
+                <div class="col-md-2">
+                    <label for="granularitySelect" class="form-label">统计粒度</label>
+                    <select id="granularitySelect" class="form-select">
+                        <option value="hour">小时</option>
+                        <option value="day" selected>天</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label for="inactiveThreshold" class="form-label">异常阈值（小时未提交）</label>
+                    <input type="number" id="inactiveThreshold" class="form-control" value="4" min="1">
+                </div>
+
+                <div class="col-md-3 text-end">
+                    <button id="fetchData" class="btn btn-primary w-100">
+                        <i class="fas fa-sync-alt me-1"></i>刷新
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key metrics -->
+    <div class="row mb-3">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <div class="stat-value" id="stat-total">-</div>
+                    <div class="stat-label">提交总数</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <div class="stat-value" id="stat-sources">-</div>
+                    <div class="stat-label">来源数</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-danger">
+                <div class="card-body text-center">
+                    <div class="stat-value text-danger" id="stat-inactive">-</div>
+                    <div class="stat-label text-danger">异常来源</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body text-center">
+                    <div class="stat-value" id="stat-avg-gap">-</div>
+                    <div class="stat-label">平均间隔（小时）</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Abnormal data sources -->
+    <div class="card border-danger mb-3">
+        <div class="card-header bg-danger text-white">
+            <i class="fas fa-exclamation-triangle me-2"></i>异常数据源（超过阈值未提交）
+        </div>
+        <div class="card-body">
+            <div class="table-container">
+                <table class="table table-sm" id="problem-table">
+                    <thead>
+                        <tr>
+                            <th>来源</th>
+                            <th>最后提交时间</th>
+                            <th>距今</th>
+                            <th>最后标题</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div id="problem-empty" class="text-muted text-center py-3" style="display:none;">暂无异常数据源</div>
+        </div>
+    </div>
+
+    <!-- Submission trend -->
+    <div class="card mb-3">
+        <div class="card-header fw-bold">提交趋势</div>
+        <div class="card-body">
+            <div id="trend-chart" style="height:300px;"></div>
+        </div>
+    </div>
+
+    <!-- All data sources -->
+    <div class="card">
+        <div class="card-header fw-bold">全部数据源</div>
+        <div class="card-body">
+            <div class="table-container">
+                <table class="table table-sm table-hover" id="sources-table">
+                    <thead>
+                        <tr>
+                            <th>来源</th>
+                            <th>最后提交时间</th>
+                            <th>距今</th>
+                            <th>最后标题</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-muted small mt-2 mb-4">
+        数据源判定：从采集字段 informant（通常为文章 URL）中提取域名，如 https://www.bbc.com/news → bbc.com。
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+
+<script>
+let trendChart = null;
+
+function pad2(n) {
+    return String(n).padStart(2, '0');
+}
+
+function formatDateTimeLocal(date) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}T${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
+function formatDateTimeDisplay(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function getValue(id, fallback = '') {
+    const el = document.getElementById(id);
+    return el ? el.value : fallback;
+}
+
+function setValue(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
+}
+
+function hoursAgo(isoString) {
+    if (!isoString) return null;
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return null;
+    return (Date.now() - date.getTime()) / (1000 * 60 * 60);
+}
+
+function formatGap(hours) {
+    if (hours === null || hours === undefined || !Number.isFinite(hours)) return '-';
+    if (hours < 1) {
+        return `${Math.round(hours * 60)} 分钟`;
+    }
+    if (hours < 24) {
+        return `${Math.round(hours)} 小时`;
+    }
+    const days = Math.floor(hours / 24);
+    const remainingHours = Math.round(hours % 24);
+    return remainingHours > 0 ? `${days} 天 ${remainingHours} 小时` : `${days} 天`;
+}
+
+function initPage() {
+    const now = new Date();
+    const startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const dateRangeInput = document.getElementById('dateRange');
+    if (dateRangeInput && typeof flatpickr !== 'undefined') {
+        const fp = flatpickr(dateRangeInput, {
+            mode: 'range',
+            enableTime: true,
+            dateFormat: 'Y-m-d H:i',
+            time_24hr: true,
+            defaultDate: [startDate, now],
+            onChange: function(selectedDates) {
+                if (selectedDates.length >= 2) {
+                    setValue('startTime', flatpickr.formatDate(selectedDates[0], 'Y-m-d H:i') + ':00');
+                    setValue('endTime', flatpickr.formatDate(selectedDates[1], 'Y-m-d H:i') + ':00');
+                }
+            }
+        });
+
+        // Explicitly set defaults because defaultDate does not trigger onChange
+        if (fp.selectedDates.length >= 2) {
+            setValue('startTime', flatpickr.formatDate(fp.selectedDates[0], 'Y-m-d H:i') + ':00');
+            setValue('endTime', flatpickr.formatDate(fp.selectedDates[1], 'Y-m-d H:i') + ':00');
+        }
+    } else {
+        setValue('startTime', formatDateTimeLocal(startDate));
+        setValue('endTime', formatDateTimeLocal(now));
+    }
+
+    document.getElementById('fetchData').addEventListener('click', fetchAllData);
+
+    fetchAllData();
+}
+
+async function fetchAllData() {
+    const startTime = getValue('startTime');
+    const endTime = getValue('endTime');
+
+    if (!startTime || !endTime) {
+        alert('请选择开始和结束时间');
+        return;
+    }
+
+    await Promise.all([
+        fetchSourceSubmissions(startTime, endTime),
+        fetchSourceLastSubmissions(),
+    ]);
+}
+
+async function fetchSourceSubmissions(startTime, endTime) {
+    const granularity = getValue('granularitySelect', 'day');
+
+    try {
+        const params = new URLSearchParams();
+        params.set('start_time', startTime);
+        params.set('end_time', endTime);
+        params.set('granularity', granularity);
+        params.set('top_n', '200');
+
+        const resp = await fetch('/statistics/api/source_submissions?' + params.toString());
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        renderTrendChart(data);
+
+        // Update total submission count (from source_submissions totals)
+        const totals = data.totals || {};
+        const totalSubmissions = Object.values(totals).reduce((a, b) => a + b, 0);
+        document.getElementById('stat-total').textContent = totalSubmissions;
+    } catch (err) {
+        console.error('Failed to load source submissions:', err);
+        document.getElementById('trend-chart').innerHTML =
+            `<div class="text-muted text-center py-5">加载失败: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+async function fetchSourceLastSubmissions() {
+    try {
+        const resp = await fetch('/statistics/api/source_last_submissions?limit=500');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        renderSources(data.sources || []);
+    } catch (err) {
+        console.error('Failed to load last submissions:', err);
+        document.querySelector('#sources-table tbody').innerHTML =
+            `<tr><td colspan="5" class="text-danger text-center">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        document.querySelector('#problem-table tbody').innerHTML = '';
+    }
+}
+
+function renderSources(sources) {
+    const thresholdHours = Math.max(1, Number(getValue('inactiveThreshold', '24')) || 24);
+    const now = Date.now();
+
+    // Compute time gap for each source
+    const enriched = sources.map(item => {
+        const gapHours = hoursAgo(item.last_submit_time);
+        return {
+            ...item,
+            gapHours,
+            isInactive: gapHours !== null && gapHours > thresholdHours
+        };
+    });
+
+    // Update metric cards (total count is updated by source_submissions)
+    const inactiveCount = enriched.filter(item => item.isInactive).length;
+    const activeGaps = enriched
+        .filter(item => item.gapHours !== null && !item.isInactive)
+        .map(item => item.gapHours);
+    const avgGap = activeGaps.length > 0
+        ? (activeGaps.reduce((a, b) => a + b, 0) / activeGaps.length).toFixed(1)
+        : '-';
+
+    document.getElementById('stat-sources').textContent = sources.length;
+    document.getElementById('stat-inactive').textContent = inactiveCount;
+    document.getElementById('stat-avg-gap').textContent = avgGap;
+
+    // All sources table (sorted by last submit time descending)
+    const tbodyAll = document.querySelector('#sources-table tbody');
+    tbodyAll.innerHTML = '';
+
+    if (enriched.length === 0) {
+        tbodyAll.innerHTML = '<tr><td colspan="4" class="text-muted text-center">暂无数据</td></tr>';
+    } else {
+        enriched.forEach(item => {
+            const gapClass = item.isInactive ? 'gap-warning' : 'gap-ok';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${escapeHtml(item.source)}</strong></td>
+                <td>${formatDateTimeDisplay(item.last_submit_time)}</td>
+                <td class="gap-hours ${gapClass}">${formatGap(item.gapHours)}</td>
+                <td class="last-title" title="${escapeHtml(item.last_title)}">
+                    ${item.last_uuid ? `<a href="/intelligence/${escapeHtml(item.last_uuid)}" target="_blank">${escapeHtml(item.last_title || '无标题')}</a>` : escapeHtml(item.last_title || '无标题')}
+                </td>
+            `;
+            tbodyAll.appendChild(tr);
+        });
+    }
+
+    // Abnormal sources table (sorted by gap descending)
+    const inactive = enriched.filter(item => item.isInactive).sort((a, b) => (b.gapHours || 0) - (a.gapHours || 0));
+    const tbodyProblem = document.querySelector('#problem-table tbody');
+    const problemEmpty = document.getElementById('problem-empty');
+    tbodyProblem.innerHTML = '';
+
+    if (inactive.length === 0) {
+        problemEmpty.style.display = 'block';
+    } else {
+        problemEmpty.style.display = 'none';
+        inactive.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${escapeHtml(item.source)}</strong></td>
+                <td>${formatDateTimeDisplay(item.last_submit_time)}</td>
+                <td class="gap-hours gap-warning">${formatGap(item.gapHours)}</td>
+                <td class="last-title" title="${escapeHtml(item.last_title)}">
+                    ${item.last_uuid ? `<a href="/intelligence/${escapeHtml(item.last_uuid)}" target="_blank">${escapeHtml(item.last_title || '无标题')}</a>` : escapeHtml(item.last_title || '无标题')}
+                </td>
+                <td>
+                    <a href="/intelligences/search?informant_domains=${encodeURIComponent(item.source)}" target="_blank" class="btn btn-sm btn-outline-secondary">历史</a>
+                </td>
+            `;
+            tbodyProblem.appendChild(tr);
+        });
+    }
+}
+
+function renderTrendChart(data) {
+    const dom = document.getElementById('trend-chart');
+    if (!dom) return;
+
+    if (!trendChart) {
+        trendChart = echarts.init(dom);
+    }
+
+    const slots = data.slots || [];
+    const sources = data.sources || [];
+    const series = data.series || {};
+
+    if (slots.length === 0 || sources.length === 0) {
+        trendChart.setOption({
+            title: { text: '暂无数据', left: 'center', top: 'center', textStyle: { color: '#aaa' } },
+            xAxis: { show: false }, yAxis: { show: false }, series: []
+        }, true);
+        return;
+    }
+
+    const colors = ['#4361ee', '#3a0ca3', '#7209b7', '#f72585', '#4cc9f0', '#06d6a0', '#ef476f', '#ffd166'];
+
+    const echartsSeries = sources.map((source, index) => ({
+        name: source,
+        type: 'line',
+        smooth: true,
+        stack: 'Total',
+        areaStyle: { opacity: 0.12 },
+        emphasis: { focus: 'series' },
+        data: series[source] || slots.map(() => 0),
+        itemStyle: { color: colors[index % colors.length] },
+        symbol: 'none'
+    }));
+
+    trendChart.setOption({
+        title: { text: '' },
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'cross' },
+            backgroundColor: 'rgba(255,255,255,0.95)',
+            textStyle: { color: '#333' }
+        },
+        legend: {
+            data: sources,
+            bottom: 0,
+            type: 'scroll',
+            textStyle: { fontSize: 11 }
+        },
+        grid: {
+            left: '3%', right: '4%', bottom: '15%', top: '5%', containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            boundaryGap: false,
+            data: slots.map(s => formatSlotLabel(s, data.granularity)),
+            axisLabel: { rotate: data.granularity === 'hour' ? 45 : 0, fontSize: 11 }
+        },
+        yAxis: {
+            type: 'value',
+            minInterval: 1,
+            splitLine: { lineStyle: { type: 'dashed', color: '#eee' } }
+        },
+        series: echartsSeries
+    }, true);
+
+    setTimeout(() => trendChart.resize(), 0);
+}
+
+function formatSlotLabel(slot, granularity) {
+    if (!slot) return '';
+    if (granularity === 'hour') return slot.slice(5, 13) + '时';
+    if (granularity === 'day') return slot.slice(5);
+    if (granularity === 'week') return slot + ' 周';
+    if (granularity === 'month') return slot;
+    return slot;
+}
+
+window.addEventListener('resize', () => {
+    if (trendChart) trendChart.resize();
+});
+
+document.addEventListener('DOMContentLoaded', initPage);
+</script>
+</body>
+</html>

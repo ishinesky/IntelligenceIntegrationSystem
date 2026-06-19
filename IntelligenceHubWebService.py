@@ -832,6 +832,15 @@ class IntelligenceHubWebService:
         def intelligence_distribution_page():
             return get_intelligence_statistics_page()
 
+        @app.route('/statistics/dashboard', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def statistics_dashboard_page():
+            """
+            Data source status monitoring page.
+            Shows source submission status and abnormal (long-time-no-submit) sources.
+            """
+            return render_template('statistics_dashboard.html')
+
         @app.route('/maintenance/export_mongodb.html', methods=['GET'])
         @WebServiceAccessManager.login_required
         def export_mongodb_page():
@@ -951,6 +960,74 @@ class IntelligenceHubWebService:
                 },
                 "top_informants": informant_stats
             })
+
+        @app.route('/statistics/api/source_submissions', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def api_source_submissions():
+            """
+            Query source submission statistics for the given time range
+            (time series + aggregated totals).
+
+            Query params:
+                start_time: ISO format start time
+                end_time: ISO format end time
+                granularity: hour | day | week | month (default day)
+                top_n: Top N sources, default 20, max 50
+            """
+            try:
+                start_str = request.args.get('start_time')
+                end_str = request.args.get('end_time')
+                granularity = request.args.get('granularity', 'day')
+                top_n = request.args.get('top_n', '20')
+
+                if not start_str or not end_str:
+                    return jsonify({"error": "start_time and end_time are required"}), 400
+
+                valid_granularities = {'hour', 'day', 'week', 'month'}
+                if granularity not in valid_granularities:
+                    return jsonify({"error": f"Invalid granularity. Must be one of {valid_granularities}"}), 400
+
+                start_time = dateutil.parser.parse(start_str)
+                end_time = dateutil.parser.parse(end_str)
+                top_n = max(1, min(int(top_n), 50))
+
+                engine = self.intelligence_hub.get_submission_statistics_engine()
+                if not engine:
+                    return jsonify({"error": "SubmissionStatisticsEngine not initialized"}), 503
+
+                result = engine.query_source_submissions(
+                    start_time=start_time,
+                    end_time=end_time,
+                    granularity=granularity,
+                    top_n=top_n,
+                )
+                return jsonify(result)
+            except Exception as e:
+                logger.error(f"api_source_submissions error: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
+
+        @app.route('/statistics/api/source_last_submissions', methods=['GET'])
+        @WebServiceAccessManager.login_required
+        def api_source_last_submissions():
+            """
+            Query the latest submission info per source.
+
+            Query params:
+                limit: Max number of sources, default 100, max 500
+            """
+            try:
+                limit = request.args.get('limit', '100')
+                limit = max(1, min(int(limit), 500))
+
+                engine = self.intelligence_hub.get_submission_statistics_engine()
+                if not engine:
+                    return jsonify({"error": "SubmissionStatisticsEngine not initialized"}), 503
+
+                result = engine.query_last_submissions(limit=limit)
+                return jsonify(result)
+            except Exception as e:
+                logger.error(f"api_source_last_submissions error: {e}", exc_info=True)
+                return jsonify({"error": str(e)}), 500
 
         # --------------------------- Entity Frequency Statistics ---------------------------
 
