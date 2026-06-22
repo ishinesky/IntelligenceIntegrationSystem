@@ -54,6 +54,22 @@ document.addEventListener('DOMContentLoaded', () => {
         clampPerPageOptions('#mongo-pane select[name="per_page"]', mongoMaxPerPage);
         clampPerPageOptions('#vector-pane select[name="per_page"]', vectorMaxPerPage);
 
+        // 游客模式仅允许按 Archive Time 搜索，禁用并清空 Publish Time
+        ['date-range-mongo', 'date-range-vector'].forEach(id => {
+            const input = document.getElementById(id);
+            if (!input) return;
+            input.disabled = true;
+            input.placeholder = '游客模式不可用';
+            const group = input.closest('.public-publish-time-group');
+            if (group) group.classList.add('disabled-publish-time');
+            const clearBtn = document.querySelector(`.clear-date-btn[data-target="${id}"]`);
+            if (clearBtn) clearBtn.disabled = true;
+        });
+        ['start-time-mongo', 'end-time-mongo', 'start-time-vector', 'end-time-vector'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
         // 禁用全文库选项并提示
         const inFulltext = document.getElementById('in_fulltext');
         if (inFulltext) {
@@ -77,10 +93,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 在 Vector 面板加一段小字提示
         const vectorPane = document.getElementById('vector-pane');
+        const vectorWindowDays = publicLimits.vector_default_window_days || 30;
         if (vectorPane && !vectorPane.querySelector('.public-limit-notice')) {
             const notice = document.createElement('div');
             notice.className = 'alert alert-light border public-limit-notice py-1 px-2 mt-2 mb-0 small text-secondary';
-            notice.innerHTML = `<i class="bi bi-shield-lock"></i> 游客模式：每页最多 ${vectorMaxPerPage} 条、最多 ${vectorMaxPage} 页、仅摘要库、最低相似度 ${vectorMinScore}。`;
+            notice.innerHTML = `<i class="bi bi-shield-lock"></i> 游客模式：每页最多 ${vectorMaxPerPage} 条、最多 ${vectorMaxPage} 页、仅摘要库、最低相似度 ${vectorMinScore}、仅最近 ${vectorWindowDays} 天归档数据。`;
             vectorPane.appendChild(notice);
         }
     }
@@ -250,14 +267,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const startHidden = document.getElementById(startHiddenId);
         const endHidden = document.getElementById(endHiddenId);
         if (!input || typeof flatpickr === 'undefined') return null;
-        const now = new Date();
-        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const fp = flatpickr(input, {
             mode: "range",
             enableTime: true,
             dateFormat: "Y-m-d H:i",
             time_24hr: true,
-            defaultDate: [yesterday, now],
+            allowInput: true,
             onChange: function(selectedDates) {
                 if (selectedDates.length >= 2) {
                     startHidden.value = flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") + ':00';
@@ -268,11 +283,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-        // 初始化时同步一次 hidden input
-        if (fp.selectedDates.length >= 2) {
-            startHidden.value = flatpickr.formatDate(fp.selectedDates[0], "Y-m-d H:i") + ':00';
-            endHidden.value = flatpickr.formatDate(fp.selectedDates[1], "Y-m-d H:i") + ':00';
+
+        // 绑定清空按钮
+        const clearBtn = document.querySelector(`.clear-date-btn[data-target="${inputId}"]`);
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                fp.clear();
+            });
         }
+
         return fp;
     }
 
@@ -280,6 +299,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const fpArchiveMongo = initFlatpickr('date-range-archive-mongo', 'archive-start-time-mongo', 'archive-end-time-mongo');
     const fpVector = initFlatpickr('date-range-vector', 'start-time-vector', 'end-time-vector');
     const fpArchiveVector = initFlatpickr('date-range-archive-vector', 'archive-start-time-vector', 'archive-end-time-vector');
+
+    // 游客模式下清空已禁用的发布时间选择器（flatpickr 实例此时已创建）
+    if (publicMode) {
+        [fpMongo, fpVector].forEach(fp => {
+            if (fp && typeof fp.clear === 'function') fp.clear(false);
+        });
+        ['start-time-mongo', 'end-time-mongo', 'start-time-vector', 'end-time-vector'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+    }
 
     // --- 5. 核心搜索功能 ---
     function showPublicLimitMessage(message) {
@@ -367,10 +397,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const perPage = document.querySelector('#vector-pane select[name="per_page"]');
             payload.per_page = Number(perPage ? perPage.value : 10) || 10;
 
-            const st = document.getElementById('start-time-vector').value;
-            const et = document.getElementById('end-time-vector').value;
-            if (st) payload.start_time = st;
-            if (et) payload.end_time = et;
+            if (!publicMode) {
+                const st = document.getElementById('start-time-vector').value;
+                const et = document.getElementById('end-time-vector').value;
+                if (st) payload.start_time = st;
+                if (et) payload.end_time = et;
+            }
 
             const ast = document.getElementById('archive-start-time-vector').value;
             const aet = document.getElementById('archive-end-time-vector').value;
@@ -398,10 +430,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const perPage = document.querySelector('#mongo-pane select[name="per_page"]');
             payload.per_page = Number(perPage ? perPage.value : 10) || 10;
 
-            const st = document.getElementById('start-time-mongo').value;
-            const et = document.getElementById('end-time-mongo').value;
-            if (st) payload.start_time = st;
-            if (et) payload.end_time = et;
+            if (!publicMode) {
+                const st = document.getElementById('start-time-mongo').value;
+                const et = document.getElementById('end-time-mongo').value;
+                if (st) payload.start_time = st;
+                if (et) payload.end_time = et;
+            }
 
             const ast = document.getElementById('archive-start-time-mongo').value;
             const aet = document.getElementById('archive-end-time-mongo').value;
@@ -506,28 +540,31 @@ document.addEventListener('DOMContentLoaded', () => {
             return isNaN(d) ? null : d;
         };
 
-        if (startTime && endTime) {
-            const startDate = parseDate(startTime);
-            const endDate = parseDate(endTime);
-            if (!isVector) {
-                document.getElementById('start-time-mongo').value = startTime;
-                document.getElementById('end-time-mongo').value = endTime;
-                if (fpMongo && startDate && endDate) fpMongo.setDate([startDate, endDate], false);
-            } else {
-                document.getElementById('start-time-vector').value = startTime;
-                document.getElementById('end-time-vector').value = endTime;
-                if (fpVector && startDate && endDate) fpVector.setDate([startDate, endDate], false);
-            }
-        } else if (archiveStartTime && archiveEndTime) {
-            // 跳转时只带了归档时间 → 清空默认的发布时间，避免双重过滤
-            if (!isVector) {
-                document.getElementById('start-time-mongo').value = '';
-                document.getElementById('end-time-mongo').value = '';
-                if (fpMongo) fpMongo.clear(false);
-            } else {
-                document.getElementById('start-time-vector').value = '';
-                document.getElementById('end-time-vector').value = '';
-                if (fpVector) fpVector.clear(false);
+        // 游客模式忽略 URL 中的发布时间参数
+        if (!publicMode) {
+            if (startTime && endTime) {
+                const startDate = parseDate(startTime);
+                const endDate = parseDate(endTime);
+                if (!isVector) {
+                    document.getElementById('start-time-mongo').value = startTime;
+                    document.getElementById('end-time-mongo').value = endTime;
+                    if (fpMongo && startDate && endDate) fpMongo.setDate([startDate, endDate], false);
+                } else {
+                    document.getElementById('start-time-vector').value = startTime;
+                    document.getElementById('end-time-vector').value = endTime;
+                    if (fpVector && startDate && endDate) fpVector.setDate([startDate, endDate], false);
+                }
+            } else if (archiveStartTime && archiveEndTime) {
+                // 跳转时只带了归档时间 → 清空默认的发布时间，避免双重过滤
+                if (!isVector) {
+                    document.getElementById('start-time-mongo').value = '';
+                    document.getElementById('end-time-mongo').value = '';
+                    if (fpMongo) fpMongo.clear(false);
+                } else {
+                    document.getElementById('start-time-vector').value = '';
+                    document.getElementById('end-time-vector').value = '';
+                    if (fpVector) fpVector.clear(false);
+                }
             }
         }
         if (archiveStartTime && archiveEndTime) {

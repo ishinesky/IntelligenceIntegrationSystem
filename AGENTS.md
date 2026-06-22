@@ -154,7 +154,7 @@ pip install -r requirements_freeze.txt
 
 1. **主配置**：复制 `_config/config_example.json` → `_config/config.json`
    - 修改 MongoDB 地址、Token、向量库路径等
-   - 公开搜索限制：`intelligence_hub_web_service.public_search` 控制未登录用户的 `per_page`、向量 `top_n`、速率限制、并发上限等
+   - 公开搜索限制：`intelligence_hub_web_service.public_search` 控制未登录用户的 `per_page`、最大页码、时间窗口、向量 `top_n`、速率限制、并发上限等。未登录用户仅允许按归档时间（Archive Time）搜索，避免 Publish Time 与 Archive Time 双重过滤。
 2. **AI 服务配置**：复制 `AIClientCenter/AIClientConfigExample.py` → `_config/ai_client_config.py`
    - 填入实际 API Key、模型地址、优先级、分组限制等
 3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号

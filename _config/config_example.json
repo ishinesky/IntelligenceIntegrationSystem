@@ -58,6 +58,8 @@
 
     "public_search": {
       "mongo_max_per_page": 20,
+      "mongo_max_page": 5,
+      "mongo_default_window_days": 30,
       "vector_max_per_page": 10,
       "vector_max_top_n": 20,
       "vector_max_page": 2,

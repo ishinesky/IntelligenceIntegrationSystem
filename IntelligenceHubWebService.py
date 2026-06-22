@@ -44,6 +44,8 @@ VECTOR_DEFAULT_SCORE_THRESHOLD = 0.6
 # 未登录用户默认限制（可在构造时通过 public_search_limits 覆盖）
 DEFAULT_PUBLIC_SEARCH_LIMITS = {
     "mongo_max_per_page": 20,
+    "mongo_max_page": 5,
+    "mongo_default_window_days": 30,
     "vector_max_per_page": 10,
     "vector_max_top_n": 20,
     "vector_max_page": 2,
@@ -572,6 +574,9 @@ class IntelligenceHubWebService:
         def _apply_public_search_limits(p: Dict[str, Any], client_ip: str) -> Optional[str]:
             """
             对未登录用户应用搜索限制。返回错误信息或 None。
+
+            游客模式统一仅允许按 Archive Time（归档时间）搜索，忽略 Publish Time，
+            避免 Publish Time 与 Archive Time 双重过滤导致结果为空。
             """
             limits = self.public_search_limits
             mode = p.get('search_mode', 'mongo')
@@ -584,11 +589,27 @@ class IntelligenceHubWebService:
                         f"每分钟最多 {limits.get('requests_per_minute', 10)} 次，请稍后再试。"
                     )
 
-            # Mongo 模式分页限制
+            # 游客模式禁止使用 Publish Time，统一使用 Archive Time
+            p['start_time'] = ''
+            p['end_time'] = ''
+
+            # Mongo 模式限制
             if mode == 'mongo':
                 max_per_page = limits.get('mongo_max_per_page', 20)
                 if p.get('per_page', 10) > max_per_page:
                     p['per_page'] = max_per_page
+
+                max_page = limits.get('mongo_max_page', 5)
+                if p.get('page', 1) > max_page:
+                    return f"未登录用户普通搜索仅支持前 {max_page} 页，请登录后查看更多。"
+
+                # 未登录用户强制最近 N 天归档数据
+                if not p.get('archive_start_time') or not p.get('archive_end_time'):
+                    window_days = limits.get('mongo_default_window_days', 30)
+                    now = get_aware_time()
+                    start = now - datetime.timedelta(days=window_days)
+                    p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
 
             # 向量模式限制
             if mode.startswith('vector'):
@@ -620,13 +641,13 @@ class IntelligenceHubWebService:
                 requested_top_n = min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
                 p['_effective_top_n'] = min(requested_top_n, max_top_n)
 
-                # 未登录用户强制最近 N 天（仅当没传时间范围时）
-                window_days = limits.get('vector_default_window_days', 30)
-                if not p.get('start_time') and not p.get('archive_start_time'):
+                # 未登录用户强制最近 N 天归档数据
+                if not p.get('archive_start_time') or not p.get('archive_end_time'):
+                    window_days = limits.get('vector_default_window_days', 30)
                     now = get_aware_time()
                     start = now - datetime.timedelta(days=window_days)
-                    p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
-                    p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['archive_start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['archive_end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
 
             return None
 
