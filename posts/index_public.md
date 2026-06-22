@@ -8,6 +8,8 @@
 
 [实体趋势](/statistics/entity_frequency/page)
 
+[情报搜索](/intelligences/search)
+
 > 20260215: 
 > 
 > 临时开放相似情报搜索功能，欢迎大家体验。入口为文章详情页面右上方的“Find Similar”按钮。

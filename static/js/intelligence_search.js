@@ -24,6 +24,67 @@ document.addEventListener('DOMContentLoaded', () => {
         payload_cache: {}
     };
 
+    // --- 公开模式限制：读取后端注入的限制并调整 UI ---
+    const publicMode = JSON.parse(document.body.dataset.publicMode || 'false');
+    const publicLimits = JSON.parse(document.body.dataset.publicLimits || '{}');
+
+    function clampPerPageOptions(selectId, maxPerPage) {
+        const select = document.querySelector(selectId);
+        if (!select || !maxPerPage) return;
+        let needClamp = false;
+        for (const opt of Array.from(select.options)) {
+            if (Number(opt.value) > maxPerPage) {
+                opt.remove();
+            }
+        }
+        if (Number(select.value) > maxPerPage) {
+            select.value = String(maxPerPage);
+        }
+    }
+
+    function applyPublicModeLimits() {
+        if (!publicMode) return;
+
+        const vectorMaxPerPage = publicLimits.vector_max_per_page || 10;
+        const mongoMaxPerPage = publicLimits.mongo_max_per_page || 20;
+        const vectorMinScore = publicLimits.vector_min_score_threshold || 0.6;
+        const vectorMaxPage = publicLimits.vector_max_page || 2;
+
+        // 限制每页选项
+        clampPerPageOptions('#mongo-pane select[name="per_page"]', mongoMaxPerPage);
+        clampPerPageOptions('#vector-pane select[name="per_page"]', vectorMaxPerPage);
+
+        // 禁用全文库选项并提示
+        const inFulltext = document.getElementById('in_fulltext');
+        if (inFulltext) {
+            inFulltext.checked = false;
+            inFulltext.disabled = true;
+            const label = document.querySelector('label[for="in_fulltext"]');
+            if (label) {
+                label.classList.add('text-muted');
+                label.title = '游客模式仅支持摘要库搜索';
+            }
+        }
+
+        // 把相似度滑块下限强制拉到游客最低阈值
+        const scoreMinInput = document.getElementById('score-threshold-min-vector');
+        if (scoreMinInput && Number(scoreMinInput.value) < vectorMinScore) {
+            scoreMinInput.value = vectorMinScore;
+            if (sliderVector) sliderVector.setValues(vectorMinScore, 1.0);
+            const label = document.getElementById('score-label-vector');
+            if (label) label.textContent = `${vectorMinScore.toFixed(2)} - 1.00`;
+        }
+
+        // 在 Vector 面板加一段小字提示
+        const vectorPane = document.getElementById('vector-pane');
+        if (vectorPane && !vectorPane.querySelector('.public-limit-notice')) {
+            const notice = document.createElement('div');
+            notice.className = 'alert alert-light border public-limit-notice py-1 px-2 mt-2 mb-0 small text-secondary';
+            notice.innerHTML = `<i class="bi bi-shield-lock"></i> 游客模式：每页最多 ${vectorMaxPerPage} 条、最多 ${vectorMaxPage} 页、仅摘要库、最低相似度 ${vectorMinScore}。`;
+            vectorPane.appendChild(notice);
+        }
+    }
+
     // --- 2. 数据源列表 ---
     const MEDIA_SOURCES = [
         { domain: 'aa.com.tr',      name: '阿纳多卢通讯社',       flag: '🇹🇷' },
@@ -181,6 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('score-label-vector').textContent = `${low.toFixed(2)} - ${high.toFixed(2)}`;
     });
 
+    applyPublicModeLimits();
+
     // --- 4. 日期选择器 ---
     function initFlatpickr(inputId, startHiddenId, endHiddenId) {
         const input = document.getElementById(inputId);
@@ -219,7 +282,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const fpArchiveVector = initFlatpickr('date-range-archive-vector', 'archive-start-time-vector', 'archive-end-time-vector');
 
     // --- 5. 核心搜索功能 ---
+    function showPublicLimitMessage(message) {
+        let box = document.getElementById('public-limit-message');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'public-limit-message';
+            box.className = 'alert alert-warning py-1 px-2 mb-2 small';
+            resultsWrapper.insertBefore(box, resultsWrapper.firstChild);
+        }
+        box.textContent = message;
+    }
+
     async function fetchResults(payload) {
+        // 游客模式下对向量搜索的页码做客户端兜底
+        if (publicMode && payload.search_mode && payload.search_mode.startsWith('vector')) {
+            const maxPage = publicLimits.vector_max_page || 2;
+            if (payload.page > maxPage) {
+                payload.page = maxPage;
+                currentQueryState.page = maxPage;
+                showPublicLimitMessage(`游客模式最多只能查看前 ${maxPage} 页，已自动跳转。`);
+            }
+        }
+
         searchButton.disabled = true;
         spinner.classList.remove('d-none');
         resultsWrapper.style.display = 'block';

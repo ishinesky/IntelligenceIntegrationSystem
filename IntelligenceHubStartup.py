@@ -25,6 +25,7 @@ from Tools.SystemMonotorLauncher import start_system_monitor
 from MyPythonUtility.proc_utils import find_processes, kill_processes
 from IntelligenceHubWebService import IntelligenceHubWebService, WebServiceAccessManager
 from PyLoggingBackend import setup_logging, backup_and_clean_previous_log_file, limit_logger_level, LoggerBackend
+from Tools.PerformanceLogger import setup_performance_logging, PERF_LOGGER_NAME
 
 wsgi_app = Flask(__name__)
 wsgi_app.secret_key = str(uuid.uuid4())
@@ -211,6 +212,7 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     processor_tokens = config.get('intelligence_hub_web_service.processor.tokens', [])
 
     rss_base_url = config.get('intelligence_hub_web_service.rss.host_prefix', 'http://127.0.0.1:5000')
+    public_search_limits = config.get('intelligence_hub_web_service.public_search', None)
 
     access_manager = WebServiceAccessManager(
         rpc_api_tokens=rpc_api_tokens,
@@ -222,7 +224,8 @@ def start_intelligence_hub_service() -> Tuple[IntelligenceHub, IntelligenceHubWe
     hub_service = IntelligenceHubWebService(
         intelligence_hub = hub,
         access_manager=access_manager,
-        rss_publisher=RSSPublisher(rss_base_url)
+        rss_publisher=RSSPublisher(rss_base_url),
+        public_search_limits=public_search_limits,
     )
 
     hub_service.register_routers(wsgi_app)
@@ -256,6 +259,7 @@ def config_log():
     backup_and_clean_previous_log_file(IIS_LOG_FILE, HISTORY_LOG_FOLDER)
 
     setup_logging(IIS_LOG_FILE)
+    setup_performance_logging(os.path.join(LOG_PATH, 'perf.log'))
 
     # Disable 3-party library's log
     limit_logger_level("core")

@@ -25,6 +25,7 @@ from ServiceComponent.IntelligenceAnalyzerProxy import analyze_with_ai
 from ServiceComponent.IntelligenceQueryEngine import IntelligenceQueryEngine
 from ServiceComponent.IntelligenceScoringEngine import IntelligenceScoringEngine
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
+from Tools.PerformanceLogger import get_performance_logger
 from ServiceComponent.IntelligenceStatisticsEngine import IntelligenceStatisticsEngine
 from ServiceComponent.AsyncTranslationPatch import AsyncTranslationPatch, needs_translation
 from ServiceComponent.IntelligenceAggregationEngine import IntelligenceAggregationEngine, generate_aggregation_plan
@@ -81,6 +82,7 @@ class IntelligenceHub:
         # ---------------- Parameters ----------------
 
         self.reference_url = ref_url
+        self.perf_logger = get_performance_logger()
         self.vector_db_client = vector_db_client
         self.mongo_db_cache = db_cache
         self.mongo_db_archive = db_archive
@@ -425,66 +427,75 @@ class IntelligenceHub:
             - The function expects the underlying vector database query methods to return
               dictionaries containing at least "doc_id", "score", and "content" keys.
         """
-        # 1. 线程安全快照 (Thread-Safe Snapshot)
-        # 在锁内获取引用，后续只用这两个局部变量，不用担心 self.xxx 突然变 None
-        with self.lock:
-            engine_summary = self.vector_db_engine_summary
-            engine_full = self.vector_db_engine_full_text
+        perf_ctx = {
+            'text_len': len(text),
+            'top_n': top_n,
+            'score_threshold': score_threshold,
+            'in_summary': in_summary,
+            'in_fulltext': in_fulltext,
+        }
 
-        summary_result = []
-        fulltext_result = []
+        with self.perf_logger.timed('hub_vector_search', **perf_ctx):
+            # 1. 线程安全快照 (Thread-Safe Snapshot)
+            # 在锁内获取引用，后续只用这两个局部变量，不用担心 self.xxx 突然变 None
+            with self.lock:
+                engine_summary = self.vector_db_engine_summary
+                engine_full = self.vector_db_engine_full_text
 
-        # 2. 独立查询 (Best Effort Strategy)
-        if in_summary:
-            if engine_summary:
-                summary_result = engine_summary.query(
-                    text, top_n, score_threshold,
-                    event_period=event_period,
-                    archive_period=archive_period,
-                    rate_threshold=rate_threshold)
-            else:
-                logger.warning("Summary search requested but engine is not ready yet.")
+            summary_result = []
+            fulltext_result = []
 
-        if in_fulltext:
-            if engine_full:
-                fulltext_result = engine_full.query(
-                    text, top_n, score_threshold,
-                    event_period=event_period,
-                    archive_period=archive_period,
-                    rate_threshold=rate_threshold)
-            else:
-                logger.warning("Fulltext search requested but engine is not ready yet.")
+            # 2. 独立查询 (Best Effort Strategy)
+            if in_summary:
+                if engine_summary:
+                    summary_result = engine_summary.query(
+                        text, top_n, score_threshold,
+                        event_period=event_period,
+                        archive_period=archive_period,
+                        rate_threshold=rate_threshold)
+                else:
+                    logger.warning("Summary search requested but engine is not ready yet.")
 
-        # 如果两个都没查（或者都不可用），直接返回
-        if not summary_result and not fulltext_result:
-            return []
+            if in_fulltext:
+                if engine_full:
+                    fulltext_result = engine_full.query(
+                        text, top_n, score_threshold,
+                        event_period=event_period,
+                        archive_period=archive_period,
+                        rate_threshold=rate_threshold)
+                else:
+                    logger.warning("Fulltext search requested but engine is not ready yet.")
 
-        # 3. 结果合并与去重 (Merge & Deduplicate)
-        # 策略：同一文档 ID，保留分数最高的那个
-        combined_results = summary_result + fulltext_result
-        best_records = {}  # Format: {doc_id: (score, raw_result_dict)}
+            # 如果两个都没查（或者都不可用），直接返回
+            if not summary_result and not fulltext_result:
+                return []
 
-        for result in combined_results:
-            doc_id = result.get("doc_id")  # 使用 .get 防止 key 不存在报错
-            score = result.get("score", 0.0)
+            # 3. 结果合并与去重 (Merge & Deduplicate)
+            # 策略：同一文档 ID，保留分数最高的那个
+            combined_results = summary_result + fulltext_result
+            best_records = {}  # Format: {doc_id: (score, raw_result_dict)}
 
-            if doc_id is None: continue
-            if score > score_threshold_max: continue
+            for result in combined_results:
+                doc_id = result.get("doc_id")  # 使用 .get 防止 key 不存在报错
+                score = result.get("score", 0.0)
 
-            if doc_id not in best_records or score > best_records[doc_id][0]:
-                best_records[doc_id] = (score, result)
+                if doc_id is None: continue
+                if score > score_threshold_max: continue
 
-        # 4. 转换格式 -> [(doc_id, score, result_dict)]
-        result_list = [
-            (doc_id, val[0], val[1])
-            for doc_id, val in best_records.items()
-        ]
+                if doc_id not in best_records or score > best_records[doc_id][0]:
+                    best_records[doc_id] = (score, result)
 
-        # 5. 排序与截断 (Sort & Slice)
-        # 合并后的结果必须重新按分数降序排列，并只取前 N 个
-        result_list.sort(key=lambda x: x[1], reverse=True)
+            # 4. 转换格式 -> [(doc_id, score, result_dict)]
+            result_list = [
+                (doc_id, val[0], val[1])
+                for doc_id, val in best_records.items()
+            ]
 
-        return result_list[:top_n]
+            # 5. 排序与截断 (Sort & Slice)
+            # 合并后的结果必须重新按分数降序排列，并只取前 N 个
+            result_list.sort(key=lambda x: x[1], reverse=True)
+
+            return result_list[:top_n]
 
     def get_intelligence_summary(self) -> Tuple[int, str]:
         query_engine = self.archive_db_query_engine
@@ -830,20 +841,28 @@ class IntelligenceHub:
 
                 # 3. Process data safely
                 try:
-                    clock = Clock()
+                    uuid = data.get('UUID', 'unknown')
+                    queue_size = self.vectorize_queue.qsize()
 
-                    # Validation
-                    archived_data = ArchivedData(**data)
+                    with self.perf_logger.timed(
+                        'hub_vectorize_upsert',
+                        uuid=uuid,
+                        queue_size=queue_size,
+                    ):
+                        clock = Clock()
 
-                    # Upsert to Summary Engine
-                    if self.vector_db_engine_summary:
-                        self.vector_db_engine_summary.upsert(archived_data, data_type='summary')
+                        # Validation
+                        archived_data = ArchivedData(**data)
 
-                    # Upsert to FullText Engine
-                    if self.vector_db_engine_full_text:
-                        self.vector_db_engine_full_text.upsert(archived_data, data_type='full')
+                        # Upsert to Summary Engine
+                        if self.vector_db_engine_summary:
+                            self.vector_db_engine_summary.upsert(archived_data, data_type='summary')
 
-                    logger.debug(f"Message {archived_data.UUID} vectorized, time-spending: {clock.elapsed_ms()} ms")
+                        # Upsert to FullText Engine
+                        if self.vector_db_engine_full_text:
+                            self.vector_db_engine_full_text.upsert(archived_data, data_type='full')
+
+                        logger.debug(f"Message {archived_data.UUID} vectorized, time-spending: {clock.elapsed_ms()} ms")
 
                 except Exception as e:
                     # Catch logic errors or temporary network glitches during upsert

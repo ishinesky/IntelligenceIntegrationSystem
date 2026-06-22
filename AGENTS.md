@@ -154,6 +154,7 @@ pip install -r requirements_freeze.txt
 
 1. **主配置**：复制 `_config/config_example.json` → `_config/config.json`
    - 修改 MongoDB 地址、Token、向量库路径等
+   - 公开搜索限制：`intelligence_hub_web_service.public_search` 控制未登录用户的 `per_page`、向量 `top_n`、速率限制、并发上限等
 2. **AI 服务配置**：复制 `AIClientCenter/AIClientConfigExample.py` → `_config/ai_client_config.py`
    - 填入实际 API Key、模型地址、优先级、分组限制等
 3. **用户数据库**：运行 `python Scripts/UserManagerConsole.py` 创建管理员账号
@@ -227,6 +228,8 @@ python VectorDB/VectorDBBService.py \
 - 关键日志文件：
   - `_log/iis.log`：主服务日志
   - `_log/crawls.log`：爬虫服务日志
+  - `_log/perf.log`（核心 Web / Hub）：结构化 JSON 性能日志
+  - VectorDB 服务使用自包含的 `VectorDB/perf_logger.py`，默认写入 `logs/vector_perf.log`，可通过环境变量 `VECTOR_PERF_LOG` 覆盖；记录搜索/向量化耗时、内存、CPU、队列深度等
 - 日志会自动轮转、归档到 `_log/history_log/`
 - 可通过 `limit_logger_level()` 压制第三方库噪音
 
@@ -276,6 +279,7 @@ pytest Test/
 |------|----------|
 | AI 分析线程一直等待客户端 | 检查 `_config/ai_client_config.py` 是否配置正确；检查 AI 服务余额/网络 |
 | VectorDB 无法初始化 | 确认 `VectorDBBService.py` 已启动；确认模型路径正确；查看 `_log/iis.log` |
+| 向量搜索慢/超时/503 | 检查 VectorDB 的 `logs/vector_perf.log`（或 `VECTOR_PERF_LOG` 指定路径）中 `vectordb_async_search` 耗时；确认 `VECTOR_MAX_CONCURRENT_SEARCHES` 与 `VECTOR_JOB_MAX_WORKERS` 是否满足并发需求；查看 `/api/status/memory` 中 `jobs.search` 指标 |
 | 爬虫不执行 | 检查 `CrawlerServiceEngine.py` 是否启动；检查 `CrawlTasks/` 目录下模块是否有语法错误 |
 | 登录失败 | 确认已通过 `Scripts/UserManagerConsole.py` 创建用户；检查 `_config/Authentication.db` 是否存在 |
 | 依赖安装失败 | 先升级 `pip`；若仍失败，尝试 `pip install -r requirements_freeze.txt` |

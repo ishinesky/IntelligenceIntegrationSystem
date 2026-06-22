@@ -9,7 +9,7 @@ import dateutil
 import threading
 import traceback
 from functools import wraps
-from typing import List, Tuple, Any, Dict
+from typing import List, Tuple, Any, Dict, Optional
 from dateutil import parser as date_parser
 from flask import Flask, request, jsonify, session, redirect, url_for, render_template, abort, send_file, \
     make_response, Response
@@ -29,6 +29,8 @@ from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_VECTOR_SCORE, AP
 from ServiceComponent.RateStatisticsPageRender import get_statistics_page
 from ServiceComponent.IntelligenceVectorDBEngine import IntelligenceVectorDBEngine
 from IntelligenceHub import CollectedData, IntelligenceHub, ProcessedData, APPENDIX_TIME_ARCHIVED
+from Tools.PerformanceLogger import get_performance_logger, PerformanceLogger
+from Tools.RateLimiter import SlidingWindowRateLimiter, TimedSemaphore
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -38,6 +40,20 @@ from distutils.util import strtobool
 
 VECTOR_MAX_TOP_N = 50
 VECTOR_DEFAULT_SCORE_THRESHOLD = 0.6
+
+# 未登录用户默认限制（可在构造时通过 public_search_limits 覆盖）
+DEFAULT_PUBLIC_SEARCH_LIMITS = {
+    "mongo_max_per_page": 20,
+    "vector_max_per_page": 10,
+    "vector_max_top_n": 20,
+    "vector_max_page": 2,
+    "vector_allow_fulltext": False,
+    "vector_allow_similar": False,
+    "vector_min_score_threshold": 0.6,
+    "vector_default_window_days": 30,
+    "requests_per_minute": 10,
+    "max_concurrent_vector": 5,
+}
 
 
 def to_bool(value, default=False):
@@ -207,7 +223,8 @@ class IntelligenceHubWebService:
     def __init__(self, *,
                  intelligence_hub: IntelligenceHub,
                  access_manager: WebServiceAccessManager,
-                 rss_publisher: RSSPublisher):
+                 rss_publisher: RSSPublisher,
+                 public_search_limits: Optional[Dict[str, Any]] = None):
 
         # ---------------- Parameters ----------------
 
@@ -218,6 +235,21 @@ class IntelligenceHubWebService:
         self.access_manager = access_manager
         self.rss_publisher = rss_publisher
         self.wsgi_app = None
+
+        # ---------------- Public Search Limits ----------------
+
+        self.public_search_limits = dict(DEFAULT_PUBLIC_SEARCH_LIMITS)
+        if public_search_limits:
+            self.public_search_limits.update(public_search_limits)
+
+        self._vector_search_rate_limiter = SlidingWindowRateLimiter(
+            window_sec=60.0,
+            max_requests=self.public_search_limits.get("requests_per_minute", 10)
+        )
+        self._vector_search_concurrency = TimedSemaphore(
+            self.public_search_limits.get("max_concurrent_vector", 5)
+        )
+        self._perf_logger: PerformanceLogger = get_performance_logger()
 
         # ---------------- RPC Service ----------------
 
@@ -442,9 +474,13 @@ class IntelligenceHubWebService:
             return render_template('intelligence_cluster_list.html')
 
         @app.route('/intelligences/search', methods=['GET'])
-        @WebServiceAccessManager.login_required
         def intelligences_search_page():
-            return render_template('intelligence_search.html')
+            is_public = not session.get('logged_in', False)
+            return render_template(
+                'intelligence_search.html',
+                public_mode=is_public,
+                public_limits=self.public_search_limits if is_public else {}
+            )
 
         @app.route('/intelligence/graph/view', methods=['GET'])
         @WebServiceAccessManager.login_required
@@ -455,44 +491,144 @@ class IntelligenceHubWebService:
 
         # ----------------------------------------------------------------------------------------
 
+        def _get_client_ip() -> str:
+            """从请求头中提取真实客户端 IP。"""
+            return (
+                request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+                or request.headers.get('X-Real-IP', '').strip()
+                or request.remote_addr
+                or 'unknown'
+            )
+
         @app.route('/intelligences/query', methods=['GET', 'POST'])
         def intelligences_query_api():
+            client_ip = _get_client_ip()
+            is_logged_in = bool(session.get('logged_in', False))
+            is_public = not is_logged_in
+            perf_extra = {
+                'client_ip': client_ip,
+                'is_public': is_public,
+                'path': '/intelligences/query',
+            }
+
             try:
                 # 1. 获取参数
                 params = _get_combined_params()
+                perf_extra['search_mode'] = params.get('search_mode', 'mongo')
+                perf_extra['page'] = params.get('page', 1)
+                perf_extra['per_page'] = params.get('per_page', 10)
 
-                # 2. 获取当前登录状态
-                is_logged_in = session.get('logged_in', False)
+                # 2. 应用未登录用户限制
+                if is_public:
+                    limit_err = _apply_public_search_limits(params, client_ip)
+                    if limit_err:
+                        self._perf_logger.record(
+                            'search_query_rejected',
+                            status='rejected',
+                            error=limit_err,
+                            extra=perf_extra,
+                        )
+                        return jsonify({'error': limit_err}), 429
 
-                # 3. 定义权限策略
-                mode = params['search_mode']
+                # 3. 全局向量搜索并发控制（仅对未登录用户生效）
+                sem_acquired = False
+                if is_public and params['search_mode'].startswith('vector'):
+                    if not self._vector_search_concurrency.acquire(timeout=0):
+                        self._perf_logger.record(
+                            'search_query_rejected',
+                            status='rejected',
+                            error='Too many concurrent vector searches, please retry later.',
+                            extra=perf_extra,
+                        )
+                        return jsonify({
+                            'error': '服务器当前向量搜索压力过大，请稍后再试。',
+                            'retry_after': 5,
+                        }), 503
+                    sem_acquired = True
 
-                # 策略 A: 向量搜索 (高级功能) -> 必须登录
-                # TODO: 20260215 - Temporary remove authentication.
-                # if mode.startswith('vector'):
-                #     if not is_logged_in:
-                #         return jsonify({
-                #             'error': 'Unauthorized',
-                #             'message': '高级语义搜索和相似推荐功能需要登录后使用。'
-                #         }), 401
+                try:
+                    # 4. 执行业务逻辑并记录性能
+                    with self._perf_logger.timed('search_query', **perf_extra):
+                        data = _perform_search_logic(params)
 
-                # 策略 B: 普通列表 (基础功能) -> 允许游客访问，但可以加限制
-                # elif mode == 'mongo':
-                #     # [可选] 例如：游客只能看前 3 页
-                #     # if not is_logged_in and params['page'] > 3:
-                #     #     return jsonify({
-                #     #         'error': 'Unauthorized',
-                #     #         'message': '访客仅可浏览最新 3 页内容，请登录查看更多历史数据。'
-                #     #     }), 401
-                #     pass
+                    perf_extra['result_count'] = len(data.get('results', []))
+                    perf_extra['total'] = data.get('total', 0)
+                    return jsonify(data)
 
-                # 4. 执行业务逻辑
-                data = _perform_search_logic(params)
-                return jsonify(data)
+                finally:
+                    if sem_acquired:
+                        self._vector_search_concurrency.release()
 
             except Exception as e:
                 logger.exception("intelligences_query_api error")
+                self._perf_logger.record(
+                    'search_query',
+                    status='error',
+                    error=str(e),
+                    extra=perf_extra,
+                )
                 return jsonify({'error': str(e)}), 500
+
+        def _apply_public_search_limits(p: Dict[str, Any], client_ip: str) -> Optional[str]:
+            """
+            对未登录用户应用搜索限制。返回错误信息或 None。
+            """
+            limits = self.public_search_limits
+            mode = p.get('search_mode', 'mongo')
+
+            # 速率限制（仅向量搜索）
+            if mode.startswith('vector'):
+                if not self._vector_search_rate_limiter.is_allowed(client_ip):
+                    return (
+                        f"未登录用户向量搜索过于频繁，"
+                        f"每分钟最多 {limits.get('requests_per_minute', 10)} 次，请稍后再试。"
+                    )
+
+            # Mongo 模式分页限制
+            if mode == 'mongo':
+                max_per_page = limits.get('mongo_max_per_page', 20)
+                if p.get('per_page', 10) > max_per_page:
+                    p['per_page'] = max_per_page
+
+            # 向量模式限制
+            if mode.startswith('vector'):
+                # 禁止相似推荐
+                if mode == 'vector_similar' and not limits.get('vector_allow_similar', False):
+                    return "未登录用户暂不支持相似推荐，请登录后使用。"
+
+                # 禁止全文库
+                if p.get('in_fulltext') and not limits.get('vector_allow_fulltext', False):
+                    p['in_fulltext'] = False
+                    p['in_summary'] = True
+
+                # 每页/最大召回限制
+                max_per_page = limits.get('vector_max_per_page', 10)
+                max_top_n = limits.get('vector_max_top_n', 20)
+                max_page = limits.get('vector_max_page', 2)
+
+                if p.get('per_page', 10) > max_per_page:
+                    p['per_page'] = max_per_page
+                if p.get('page', 1) > max_page:
+                    return f"未登录用户向量搜索仅支持前 {max_page} 页，请登录后查看更多。"
+
+                # 强制最小相似度阈值
+                min_threshold = limits.get('vector_min_score_threshold', 0.6)
+                if p.get('score_threshold_min', 0) < min_threshold:
+                    p['score_threshold_min'] = min_threshold
+
+                # 限制召回总量
+                requested_top_n = min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
+                p['_effective_top_n'] = min(requested_top_n, max_top_n)
+
+                # 未登录用户强制最近 N 天（仅当没传时间范围时）
+                window_days = limits.get('vector_default_window_days', 30)
+                if not p.get('start_time') and not p.get('archive_start_time'):
+                    now = get_aware_time()
+                    start = now - datetime.timedelta(days=window_days)
+                    p['start_time'] = start.strftime('%Y-%m-%dT%H:%M:%S')
+                    p['end_time'] = now.strftime('%Y-%m-%dT%H:%M:%S')
+
+            return None
 
         def _get_combined_params() -> Dict[str, Any]:
             """
@@ -648,11 +784,12 @@ class IntelligenceHubWebService:
             if not text:
                 return [], 0
 
+            top_n = p.get('_effective_top_n') or min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N)
             vector_kwargs = {
                 'text': text,
                 'in_summary': p['in_summary'],
                 'in_fulltext': p['in_fulltext'],
-                'top_n': min(p['page'] * p['per_page'], VECTOR_MAX_TOP_N),
+                'top_n': top_n,
                 'score_threshold': p.get('score_threshold_min', VECTOR_DEFAULT_SCORE_THRESHOLD),
                 'score_threshold_max': p.get('score_threshold_max', 1.0),
             }
