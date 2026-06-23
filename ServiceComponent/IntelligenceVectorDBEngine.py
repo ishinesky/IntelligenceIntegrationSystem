@@ -1,5 +1,6 @@
 import datetime
 import logging
+from functools import lru_cache
 from typing import Optional, Tuple, List, Dict, Any
 
 from VectorDB.VectorDBClient import RemoteCollection
@@ -18,10 +19,14 @@ class IntelligenceVectorDBEngine:
     Business logic wrapper for VectorDB, compatible with both v1 and v2 schemas.
     """
 
-    def __init__(self, vector_db_collection: RemoteCollection, batch_size: int = 50):
+    def __init__(self, vector_db_collection: RemoteCollection, batch_size: int = 50,
+                 query_cache_size: int = 256):
         self.collection = vector_db_collection
         self.batch_size = batch_size
         self._buffer: List[Dict] = []
+        # Cache at the business-engine level as well: the same query may hit both
+        # summary and full-text collections, and may be repeated across pages.
+        self._query_cache = lru_cache(maxsize=query_cache_size)(self._raw_query)
 
     def _parse_timestamp_safe(self, time_val: Any) -> Optional[float]:
         if time_val is None:
@@ -126,18 +131,20 @@ class IntelligenceVectorDBEngine:
         finally:
             self._buffer.clear()
 
-    def query(self,
-              text: str,
-              top_n: int = 5,
-              score_threshold: float = 0.0,
-              event_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
-              archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
-              rate_class: Optional[str] = None,
-              rate_threshold: Optional[float] = None,
-              timeout: int = 30,
-              ) -> List[Dict]:
+    def _raw_query(self,
+                   text: str,
+                   top_n: int = 5,
+                   score_threshold: float = 0.0,
+                   event_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+                   archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+                   rate_class: Optional[str] = None,
+                   rate_threshold: Optional[float] = None,
+                   timeout: int = 30,
+                   force_db_filter: bool = False,
+                   post_filter_multiplier: int = 10,
+                   ) -> List[Dict]:
         """
-        Query with support for both v1 and v2 metadata fields.
+        Internal query implementation. Use self.query() to take advantage of LRU cache.
         """
         filters = []
 
@@ -173,6 +180,38 @@ class IntelligenceVectorDBEngine:
             score_threshold=score_threshold,
             filter_criteria=where_clause,
             timeout=timeout,
+            force_db_filter=force_db_filter,
+            post_filter_multiplier=post_filter_multiplier,
+        )
+
+    def query(self,
+              text: str,
+              top_n: int = 5,
+              score_threshold: float = 0.0,
+              event_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+              archive_period: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+              rate_class: Optional[str] = None,
+              rate_threshold: Optional[float] = None,
+              timeout: int = 30,
+              force_db_filter: bool = False,
+              post_filter_multiplier: int = 10,
+              ) -> List[Dict]:
+        """
+        Query with support for both v1 and v2 metadata fields.
+        Caches results by (text, top_n, score_threshold, periods, rate filters,
+        force_db_filter, post_filter_multiplier).
+        """
+        return self._query_cache(
+            text,
+            top_n,
+            score_threshold,
+            event_period,
+            archive_period,
+            rate_class,
+            rate_threshold,
+            timeout,
+            force_db_filter,
+            post_filter_multiplier,
         )
 
     @staticmethod
