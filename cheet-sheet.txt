@@ -1,0 +1,15 @@
+sudo systemctl daemon-reload
+
+sudo systemctl enable iis.service
+
+sudo systemctl start iis.service
+
+sudo systemctl status iis.service
+
+journalctl -u iis.service -f
+
+
+tail -f /home/sleepy/Documents/IntelligenceIntegrationSystem/_log/linux_vector_db.log
+tail -f /home/sleepy/Documents/IntelligenceIntegrationSystem/_log/linux_iis.log
+tail -f /home/sleepy/Documents/IntelligenceIntegrationSystem/_log/linux_crawl_engine.log
+
