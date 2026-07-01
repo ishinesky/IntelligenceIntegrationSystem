@@ -143,7 +143,19 @@ class ColumnService:
 
     def validate_source_url(self, url: str) -> Dict[str, Any]:
         source = SourceConfig(name=url, url=url)
-        return validate_source(source).to_source_config().to_dict()
+        result = validate_source(source)
+        return {
+            "url": result.url,
+            "ok": result.ok,
+            "status_code": result.status_code,
+            "final_url": result.final_url,
+            "title": result.title,
+            "has_rss_hint": result.has_rss_hint,
+            "has_sitemap_hint": result.has_sitemap_hint,
+            "robots_allowed_hint": result.robots_allowed_hint,
+            "notes": result.notes,
+            "source_config": result.to_source_config().to_dict(),
+        }
 
     # ------------------------------ crawl preview ------------------------------
 
