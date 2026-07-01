@@ -77,24 +77,30 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - API endpoint for generating editorial reviews.
 - CLI for generating and optionally persisting reviews.
 
-## Next: Article-store integration
+### PR #11: Article lookup integration
+
+- Article lookup adapters for inline payloads, local JSONL mirrors, and remote IntelligenceHub.
+- API endpoints for article lookup/import/generate-from-article.
+- CLI for lookup/import/generate workflows.
+- Browser page for article lookup and editorial generation.
+
+## Next: Article detail editorial block
 
 Target flow:
 
 ```text
-Collected article UUID
-  -> fetch article from IntelligenceHub / local store
-  -> generate OPC editorial review
-  -> review store
-  -> article detail editorial block
+Article detail page
+  -> fetch article by UUID
+  -> fetch related editorial review
+  -> render fact summary / AI view / action suggestion block
 ```
 
 Recommended implementation:
 
 ```text
-ColumnMVP/article_lookup.py
-/api/opc-columns/articles/<uuid>/generate-editorial-review
-Article detail page editorial block
+IntelligenceHubWebService.py article detail route extension
+ServiceComponent render helper
+Template block for editorial review
 ```
 
 ## Later: Public OPC resource frontend
