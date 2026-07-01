@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPC Columns Admin</title>
+    <style>
+        :root {
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --border: #d9dee7;
+            --text: #172033;
+            --muted: #667085;
+            --primary: #1f5eff;
+            --danger: #b42318;
+            --success: #027a48;
+            --code: #101828;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+        header {
+            padding: 24px 32px 16px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        h1 { margin: 0 0 8px; font-size: 24px; }
+        h2 { margin: 0 0 16px; font-size: 18px; }
+        p { margin: 0; color: var(--muted); line-height: 1.6; }
+        main {
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) 1fr;
+            gap: 20px;
+            padding: 20px 32px 32px;
+        }
+        section {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px;
+            min-width: 0;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin: 14px 0 6px;
+        }
+        input, textarea, select {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 14px;
+            background: #fff;
+        }
+        textarea { min-height: 84px; resize: vertical; }
+        button {
+            border: 0;
+            border-radius: 8px;
+            background: var(--primary);
+            color: #fff;
+            cursor: pointer;
+            padding: 9px 12px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        button.secondary { background: #344054; }
+        button.ghost {
+            background: #fff;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        button.danger { background: var(--danger); }
+        button.success { background: var(--success); }
+        button:disabled { opacity: 0.55; cursor: not-allowed; }
+        .row { display: flex; gap: 8px; align-items: center; }
+        .row > * { flex: 1; }
+        .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+        .status {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            background: #fbfcfe;
+            white-space: pre-wrap;
+            font-size: 13px;
+        }
+        .columns-toolbar {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .column-card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+            background: #fff;
+        }
+        .column-card h3 { margin: 0 0 6px; font-size: 16px; }
+        .meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 8px 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #eef2ff;
+            color: #3538cd;
+            font-size: 12px;
+        }
+        .badge.off { background: #f2f4f7; color: #667085; }
+        .badge.ok { background: #ecfdf3; color: #027a48; }
+        .badge.warn { background: #fffaeb; color: #b54708; }
+        pre {
+            overflow: auto;
+            max-height: 420px;
+            padding: 12px;
+            border-radius: 8px;
+            background: var(--code);
+            color: #f2f4f7;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .split {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 1000px) {
+            main { grid-template-columns: 1fr; padding: 16px; }
+            header { padding: 20px 16px 14px; }
+            .split { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>OPC 栏目管理</h1>
+    <p>创建选题栏目、追加公开数据源、启用/禁用栏目，并预览动态 crawler config。该页面调用 <code>/api/opc-columns</code>。</p>
+</header>
+
+<main>
+    <section>
+        <h2>创建栏目</h2>
+        <label for="name">栏目名称</label>
+        <input id="name" placeholder="例如：济南 OPC 政策与社区动态">
+
+        <label for="description">选题描述</label>
+        <textarea id="description" placeholder="描述跟踪范围、目标用户和内容边界"></textarea>
+
+        <div class="row">
+            <div>
+                <label for="regions">地区，逗号分隔</label>
+                <input id="regions" placeholder="济南,山东">
+            </div>
+            <div>
+                <label for="keywords">关键词，逗号分隔</label>
+                <input id="keywords" placeholder="OPC,一人公司,算力券">
+            </div>
+        </div>
+
+        <label for="negativeKeywords">排除关键词，逗号分隔</label>
+        <input id="negativeKeywords" placeholder="普通招聘,无关招商广告">
+
+        <label for="seedUrls">种子 URL，每行一个</label>
+        <textarea id="seedUrls" placeholder="https://www.jinan.gov.cn/"></textarea>
+
+        <div class="actions">
+            <button id="suggestBtn" class="secondary">生成搜索 Query</button>
+            <button id="createBtn">创建栏目</button>
+            <button id="refreshBtn" class="ghost">刷新列表</button>
+        </div>
+        <div id="formStatus" class="status">等待操作。</div>
+    </section>
+
+    <section>
+        <div class="columns-toolbar">
+            <h2>栏目列表</h2>
+            <button id="refreshBtnTop" class="ghost">刷新</button>
+        </div>
+        <div id="columns"></div>
+    </section>
+
+    <section>
+        <h2>追加数据源</h2>
+        <label for="sourceColumnId">栏目 ID</label>
+        <input id="sourceColumnId" placeholder="jinan-opc">
+        <label for="sourceUrls">URL，每行一个</label>
+        <textarea id="sourceUrls" placeholder="https://example.gov.cn/news/"></textarea>
+        <div class="actions">
+            <button id="addSourcesBtn">追加并校验</button>
+            <button id="validateSourceBtn" class="secondary">仅校验第一个 URL</button>
+        </div>
+        <div id="sourceStatus" class="status">等待操作。</div>
+    </section>
+
+    <section>
+        <h2>Crawler Config 预览</h2>
+        <div class="row">
+            <input id="previewColumnId" placeholder="输入栏目 ID">
+            <button id="previewBtn">预览</button>
+        </div>
+        <pre id="previewOutput">{}</pre>
+    </section>
+</main>
+
+<script>
+const API = '/api/opc-columns';
+
+function splitCsv(value) {
+    return value.split(',').map(x => x.trim()).filter(Boolean);
+}
+
+function splitLines(value) {
+    return value.split('\n').map(x => x.trim()).filter(Boolean);
+}
+
+function showStatus(id, data) {
+    const node = document.getElementById(id);
+    node.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+}
+
+function payloadFromForm() {
+    return {
+        name: document.getElementById('name').value.trim(),
+        description: document.getElementById('description').value.trim(),
+        regions: splitCsv(document.getElementById('regions').value),
+        keywords: splitCsv(document.getElementById('keywords').value),
+        negative_keywords: splitCsv(document.getElementById('negativeKeywords').value),
+        seed_urls: splitLines(document.getElementById('seedUrls').value),
+        validate_sources: true,
+        overwrite: false
+    };
+}
+
+async function apiFetch(url, options = {}) {
+    const response = await fetch(url, {
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options
+    });
+    const text = await response.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; }
+    catch { data = { raw: text }; }
+    if (!response.ok) {
+        throw new Error(data.error || data.message || response.statusText || 'Request failed');
+    }
+    return data;
+}
+
+async function loadColumns() {
+    const container = document.getElementById('columns');
+    container.innerHTML = '<p>加载中...</p>';
+    try {
+        const result = await apiFetch(API);
+        const columns = result.data || [];
+        if (!columns.length) {
+            container.innerHTML = '<p>暂无栏目。</p>';
+            return;
+        }
+        container.innerHTML = columns.map(column => {
+            const keywords = (column.keywords || []).slice(0, 8).map(x => `<span class="badge">${escapeHtml(x)}</span>`).join(' ');
+            const enabledBadge = column.enabled ? '<span class="badge ok">enabled</span>' : '<span class="badge off">disabled</span>';
+            const sourceCount = (column.sources || []).length;
+            return `
+                <div class="column-card">
+                    <h3>${escapeHtml(column.name)} ${enabledBadge}</h3>
+                    <p>${escapeHtml(column.description || '')}</p>
+                    <div class="meta">
+                        <span>ID: <code>${escapeHtml(column.id)}</code></span>
+                        <span>Sources: ${sourceCount}</span>
+                        <span>Updated: ${escapeHtml(column.updated_at || '')}</span>
+                    </div>
+                    <div>${keywords || '<span class="badge off">no keywords</span>'}</div>
+                    <div class="actions">
+                        <button class="success" onclick="setEnabled('${escapeJs(column.id)}', true)">启用</button>
+                        <button class="danger" onclick="setEnabled('${escapeJs(column.id)}', false)">禁用</button>
+                        <button class="ghost" onclick="copyColumnId('${escapeJs(column.id)}')">复制 ID</button>
+                        <button class="secondary" onclick="previewColumn('${escapeJs(column.id)}')">预览 Config</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = `<p style="color: var(--danger)">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+async function createColumn() {
+    const payload = payloadFromForm();
+    if (!payload.name || !payload.description) {
+        showStatus('formStatus', '栏目名称和选题描述必填。');
+        return;
+    }
+    showStatus('formStatus', '创建中...');
+    try {
+        const result = await apiFetch(API, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        showStatus('formStatus', result);
+        await loadColumns();
+    } catch (err) {
+        showStatus('formStatus', err.message);
+    }
+}
+
+async function suggestQueries() {
+    const payload = payloadFromForm();
+    showStatus('formStatus', '生成中...');
+    try {
+        const result = await apiFetch(`${API}/suggest-queries`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        showStatus('formStatus', result.data);
+    } catch (err) {
+        showStatus('formStatus', err.message);
+    }
+}
+
+async function setEnabled(columnId, enabled) {
+    const endpoint = enabled ? 'enable' : 'disable';
+    try {
+        await apiFetch(`${API}/${encodeURIComponent(columnId)}/${endpoint}`, { method: 'POST', body: '{}' });
+        await loadColumns();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+async function addSources() {
+    const columnId = document.getElementById('sourceColumnId').value.trim();
+    const urls = splitLines(document.getElementById('sourceUrls').value);
+    if (!columnId || !urls.length) {
+        showStatus('sourceStatus', '栏目 ID 和 URL 必填。');
+        return;
+    }
+    showStatus('sourceStatus', '追加中...');
+    try {
+        const result = await apiFetch(`${API}/${encodeURIComponent(columnId)}/sources`, {
+            method: 'POST',
+            body: JSON.stringify({ urls, validate_sources: true })
+        });
+        showStatus('sourceStatus', result.data);
+        await loadColumns();
+    } catch (err) {
+        showStatus('sourceStatus', err.message);
+    }
+}
+
+async function validateFirstSource() {
+    const urls = splitLines(document.getElementById('sourceUrls').value);
+    if (!urls.length) {
+        showStatus('sourceStatus', '至少输入一个 URL。');
+        return;
+    }
+    showStatus('sourceStatus', '校验中...');
+    try {
+        const result = await apiFetch(`${API}/validate-source`, {
+            method: 'POST',
+            body: JSON.stringify({ url: urls[0] })
+        });
+        showStatus('sourceStatus', result.data);
+    } catch (err) {
+        showStatus('sourceStatus', err.message);
+    }
+}
+
+async function previewColumn(columnId) {
+    document.getElementById('previewColumnId').value = columnId;
+    await previewCrawlerConfig();
+}
+
+async function previewCrawlerConfig() {
+    const columnId = document.getElementById('previewColumnId').value.trim();
+    if (!columnId) return;
+    const output = document.getElementById('previewOutput');
+    output.textContent = '加载中...';
+    try {
+        const result = await apiFetch(`${API}/${encodeURIComponent(columnId)}/crawler-config`);
+        output.textContent = JSON.stringify(result.data, null, 2);
+    } catch (err) {
+        output.textContent = err.message;
+    }
+}
+
+function copyColumnId(columnId) {
+    navigator.clipboard?.writeText(columnId);
+    document.getElementById('sourceColumnId').value = columnId;
+    document.getElementById('previewColumnId').value = columnId;
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function escapeJs(value) {
+    return String(value || '').replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+}
+
+document.getElementById('createBtn').addEventListener('click', createColumn);
+document.getElementById('suggestBtn').addEventListener('click', suggestQueries);
+document.getElementById('refreshBtn').addEventListener('click', loadColumns);
+document.getElementById('refreshBtnTop').addEventListener('click', loadColumns);
+document.getElementById('addSourcesBtn').addEventListener('click', addSources);
+document.getElementById('validateSourceBtn').addEventListener('click', validateFirstSource);
+document.getElementById('previewBtn').addEventListener('click', previewCrawlerConfig);
+loadColumns();
+</script>
+</body>
+</html>
