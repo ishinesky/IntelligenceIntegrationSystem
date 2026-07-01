@@ -108,6 +108,24 @@ python -m ColumnMVP.cli_generate_editorial payload.json \
 
 Prefer environment variables for API keys in production.
 
+## Admin page
+
+Open:
+
+```text
+/opc-columns/editorial-generation
+```
+
+The page supports:
+
+- pasting article content;
+- dry-run prompt/article inspection;
+- generating editorial review JSON;
+- persisting generated review records;
+- using environment variables or temporary page-level model/base URL/API key overrides.
+
+Production note: prefer environment variables for API keys instead of entering keys in the browser.
+
 ## Payload shape
 
 Minimal payload:
