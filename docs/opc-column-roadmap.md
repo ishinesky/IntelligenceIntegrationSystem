@@ -28,34 +28,35 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - No frontend build stack.
 - Uses existing session-authenticated API.
 
-## Next: Source discovery provider
+### PR #5: Source discovery provider
+
+- Provider abstraction for candidate URL discovery.
+- Manual seed URL provider.
+- Bing Web Search provider through environment variables.
+- Candidate validation and triage scoring.
+- API and CLI discovery entrypoints.
+- Admin page support for candidate review and approval.
+
+## Next: Source governance and quality loop
 
 Target flow:
 
 ```text
-User topic
-  -> generated search queries
-  -> search provider
-  -> candidate URLs
-  -> source validation
-  -> admin approval
-  -> column sources
+Column sources
+  -> crawl success / failure stats
+  -> freshness checks
+  -> relevance checks
+  -> source quality score
+  -> suggested disable / keep / promote
 ```
 
 Recommended implementation:
 
 ```text
-ColumnMVP/source_search_provider.py
-ColumnMVP/source_candidate_service.py
-ColumnMVP/cli_discover_sources.py
+ColumnMVP/source_quality.py
+ColumnMVP/cli_audit_sources.py
+/api/opc-columns/<column_id>/source-quality
 ```
-
-Initial provider options:
-
-- manual input provider;
-- Bing Web Search API;
-- SerpAPI;
-- custom RSS/sitemap discovery.
 
 ## Later: Editorial publishing
 

@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from .column_store import ColumnStore
 from .dynamic_crawler_config import build_crawler_config
 from .models import ColumnConfig, SourceConfig, TopicBrief
+from .source_candidate_service import SourceCandidateService
 from .source_discovery import build_search_queries, candidates_from_urls
 from .source_validator import validate_and_update, validate_source
 from .topic_builder import build_column_from_topic
@@ -29,8 +30,9 @@ class ColumnService:
     web routes, dialogue agents, and future background jobs.
     """
 
-    def __init__(self, store: Optional[ColumnStore] = None):
+    def __init__(self, store: Optional[ColumnStore] = None, candidate_service: Optional[SourceCandidateService] = None):
         self.store = store or ColumnStore()
+        self.candidate_service = candidate_service or SourceCandidateService()
 
     # ------------------------------ topic / creation ------------------------------
 
@@ -75,8 +77,35 @@ class ColumnService:
             seed_urls=seed_urls,
             validate_sources=validate_sources,
         )
+        if topic.regions:
+            column.metadata["regions"] = topic.regions
         self.store.save(column, overwrite=overwrite)
         return column
+
+    # ------------------------------ discovery ------------------------------
+
+    def discover_sources_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        topic = self.topic_from_payload(payload)
+        return self.candidate_service.discover_for_topic(
+            topic,
+            provider_name=str(payload.get("provider", "auto")),
+            seed_urls=_ensure_list(payload.get("seed_urls", payload.get("urls", payload.get("url")))),
+            max_queries=int(payload.get("max_queries", 8)),
+            results_per_query=int(payload.get("results_per_query", 5)),
+            validate=bool(payload.get("validate_sources", True)),
+        )
+
+    def discover_sources_for_column(self, column_id: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        payload = payload or {}
+        column = self.store.load(column_id)
+        return self.candidate_service.discover_for_column(
+            column,
+            provider_name=str(payload.get("provider", "auto")),
+            seed_urls=_ensure_list(payload.get("seed_urls", payload.get("urls", payload.get("url")))),
+            max_queries=int(payload.get("max_queries", 8)),
+            results_per_query=int(payload.get("results_per_query", 5)),
+            validate=bool(payload.get("validate_sources", True)),
+        )
 
     # ------------------------------ read / update ------------------------------
 
@@ -109,6 +138,8 @@ class ColumnService:
             column.keywords = _ensure_list(payload["keywords"])
         if "negative_keywords" in payload:
             column.negative_keywords = _ensure_list(payload["negative_keywords"])
+        if "regions" in payload:
+            column.metadata["regions"] = _ensure_list(payload["regions"])
         if "enabled" in payload:
             column.enabled = bool(payload["enabled"])
         if "metadata" in payload and isinstance(payload["metadata"], dict):

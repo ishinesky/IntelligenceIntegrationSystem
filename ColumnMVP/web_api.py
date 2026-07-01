@@ -73,6 +73,18 @@ def create_column_blueprint(
             traceback.print_exc()
             return _json_error(str(exc), 500)
 
+    @bp.post("/discover-sources")
+    @secure
+    def discover_sources_from_topic():
+        try:
+            payload = request.get_json(force=True) or {}
+            return jsonify({"success": True, "data": column_service.discover_sources_from_payload(payload)})
+        except ValueError as exc:
+            return _json_error(str(exc), 400)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
     @bp.post("/validate-source")
     @secure
     def validate_source_url():
@@ -128,6 +140,18 @@ def create_column_blueprint(
         try:
             column = column_service.set_enabled(column_id, False)
             return jsonify({"success": True, "data": column.to_dict()})
+        except FileNotFoundError:
+            return _json_error("column not found", 404)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
+    @bp.post("/<column_id>/discover-sources")
+    @secure
+    def discover_sources_for_column(column_id: str):
+        try:
+            payload = request.get_json(force=True) or {}
+            return jsonify({"success": True, "data": column_service.discover_sources_for_column(column_id, payload)})
         except FileNotFoundError:
             return _json_error("column not found", 404)
         except Exception as exc:
