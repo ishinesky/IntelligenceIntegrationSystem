@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPC Source Quality</title>
+    <style>
+        :root {
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --border: #d9dee7;
+            --text: #172033;
+            --muted: #667085;
+            --primary: #1f5eff;
+            --danger: #b42318;
+            --success: #027a48;
+            --warn: #b54708;
+            --code: #101828;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+        }
+        header {
+            padding: 24px 32px 16px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+        }
+        main { padding: 20px 32px 32px; }
+        section {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 16px;
+        }
+        h1 { margin: 0 0 8px; font-size: 24px; }
+        h2 { margin: 0 0 16px; font-size: 18px; }
+        h3 { margin: 0 0 6px; font-size: 16px; }
+        p { margin: 0; color: var(--muted); line-height: 1.6; }
+        label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+        input, select {
+            width: 100%;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 14px;
+            background: #fff;
+        }
+        button {
+            border: 0;
+            border-radius: 8px;
+            background: var(--primary);
+            color: #fff;
+            cursor: pointer;
+            padding: 9px 12px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .row { display: grid; grid-template-columns: 1fr 180px auto; gap: 10px; align-items: end; }
+        .status {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            color: var(--muted);
+            background: #fbfcfe;
+            white-space: pre-wrap;
+            font-size: 13px;
+        }
+        .source-card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+            background: #fff;
+        }
+        .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; color: var(--muted); font-size: 12px; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2ff; color: #3538cd; font-size: 12px; }
+        .badge.promote { background: #ecfdf3; color: var(--success); }
+        .badge.keep { background: #eff8ff; color: #175cd3; }
+        .badge.review { background: #fffaeb; color: var(--warn); }
+        .badge.disable { background: #fef3f2; color: var(--danger); }
+        .badge.off { background: #f2f4f7; color: #667085; }
+        a { color: var(--primary); word-break: break-all; }
+        pre {
+            overflow: auto;
+            padding: 12px;
+            border-radius: 8px;
+            background: var(--code);
+            color: #f2f4f7;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        @media (max-width: 900px) {
+            header, main { padding-left: 16px; padding-right: 16px; }
+            .row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>OPC 源质量审计</h1>
+    <p>对栏目数据源进行质量评分，给出 promote / keep / review / disable 建议。第一版基于源元数据、主题相关性、信任等级和可选实时校验。</p>
+</header>
+<main>
+    <section>
+        <h2>审计栏目</h2>
+        <div class="row">
+            <div>
+                <label for="columnId">栏目 ID</label>
+                <input id="columnId" placeholder="jinan-opc-example">
+            </div>
+            <div>
+                <label for="liveValidate">实时校验</label>
+                <select id="liveValidate">
+                    <option value="true">true</option>
+                    <option value="false">false</option>
+                </select>
+            </div>
+            <button id="auditBtn">开始审计</button>
+        </div>
+        <div id="status" class="status">等待操作。</div>
+    </section>
+
+    <section>
+        <h2>结果</h2>
+        <div id="summary"></div>
+        <div id="sources"></div>
+    </section>
+
+    <section>
+        <h2>原始 JSON</h2>
+        <pre id="rawOutput">{}</pre>
+    </section>
+</main>
+<script>
+const API = '/api/opc-columns';
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+async function apiFetch(url) {
+    const response = await fetch(url, { credentials: 'same-origin' });
+    const text = await response.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; }
+    catch { data = { raw: text }; }
+    if (!response.ok) {
+        throw new Error(data.error || data.message || response.statusText || 'Request failed');
+    }
+    return data;
+}
+
+function renderReport(report) {
+    document.getElementById('rawOutput').textContent = JSON.stringify(report, null, 2);
+    const summary = document.getElementById('summary');
+    const counts = report.recommendation_counts || {};
+    summary.innerHTML = `
+        <p>Column: <strong>${escapeHtml(report.column?.name || '')}</strong> / <code>${escapeHtml(report.column?.id || '')}</code></p>
+        <div class="meta">
+            <span class="badge promote">promote: ${counts.promote || 0}</span>
+            <span class="badge keep">keep: ${counts.keep || 0}</span>
+            <span class="badge review">review: ${counts.review || 0}</span>
+            <span class="badge disable">disable: ${counts.disable || 0}</span>
+            <span class="badge off">live_validate: ${String(report.live_validate)}</span>
+        </div>
+    `;
+
+    const container = document.getElementById('sources');
+    const sources = report.sources || [];
+    if (!sources.length) {
+        container.innerHTML = '<p>该栏目暂无数据源。</p>';
+        return;
+    }
+    container.innerHTML = sources.map(source => {
+        const recommendation = source.recommendation || 'review';
+        const reasons = (source.reasons || []).map(reason => `<li>${escapeHtml(reason)}</li>`).join('');
+        const validation = source.validation || {};
+        return `
+            <div class="source-card">
+                <h3>${escapeHtml(source.name || source.url)} <span class="badge ${escapeHtml(recommendation)}">${escapeHtml(recommendation)}</span></h3>
+                <p><a href="${escapeHtml(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.url)}</a></p>
+                <div class="meta">
+                    <span>score: ${Number(source.score || 0).toFixed(2)}</span>
+                    <span>trust: ${escapeHtml(source.trust_level || '')}</span>
+                    <span>type: ${escapeHtml(source.source_type || '')}</span>
+                    <span>enabled: ${String(source.enabled)}</span>
+                    <span>validation: ${escapeHtml(source.validation_status || '')}</span>
+                    <span>http: ${validation.status_code || '-'}</span>
+                    <span>live ok: ${String(validation.ok ?? '-')}</span>
+                </div>
+                <ul>${reasons}</ul>
+            </div>
+        `;
+    }).join('');
+}
+
+async function audit() {
+    const columnId = document.getElementById('columnId').value.trim();
+    const liveValidate = document.getElementById('liveValidate').value;
+    if (!columnId) {
+        document.getElementById('status').textContent = '栏目 ID 必填。';
+        return;
+    }
+    document.getElementById('status').textContent = '审计中...';
+    try {
+        const result = await apiFetch(`${API}/${encodeURIComponent(columnId)}/source-quality?live_validate=${encodeURIComponent(liveValidate)}`);
+        document.getElementById('status').textContent = '审计完成。';
+        renderReport(result.data);
+    } catch (err) {
+        document.getElementById('status').textContent = err.message;
+    }
+}
+
+document.getElementById('auditBtn').addEventListener('click', audit);
+</script>
+</body>
+</html>
