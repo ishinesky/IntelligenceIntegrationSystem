@@ -7,6 +7,7 @@ executed dynamically.
 
 from .models import ColumnConfig, SourceConfig, TopicBrief, ValidationResult
 from .column_store import ColumnStore
+from .column_service import ColumnService
 
 __all__ = [
     "ColumnConfig",
@@ -14,4 +15,5 @@ __all__ = [
     "TopicBrief",
     "ValidationResult",
     "ColumnStore",
+    "ColumnService",
 ]
