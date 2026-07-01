@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPC Editorial Generation</title>
+    <style>
+        :root { --bg:#f6f7f9; --panel:#fff; --border:#d9dee7; --text:#172033; --muted:#667085; --primary:#1f5eff; --danger:#b42318; --code:#101828; }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+        header { padding:24px 32px 16px; background:var(--panel); border-bottom:1px solid var(--border); }
+        main { padding:20px 32px 32px; display:grid; grid-template-columns:minmax(340px,520px) 1fr; gap:20px; }
+        section { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px; min-width:0; }
+        h1 { margin:0 0 8px; font-size:24px; }
+        h2 { margin:0 0 16px; font-size:18px; }
+        p { margin:0; color:var(--muted); line-height:1.6; }
+        label { display:block; font-size:13px; font-weight:600; margin:12px 0 6px; }
+        input, textarea, select { width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:14px; background:#fff; }
+        textarea { min-height:90px; resize:vertical; }
+        #content { min-height:220px; }
+        button { border:0; border-radius:8px; background:var(--primary); color:#fff; cursor:pointer; padding:9px 12px; font-size:14px; font-weight:600; }
+        button.secondary { background:#344054; }
+        .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+        .status { margin-top:12px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); color:var(--muted); background:#fbfcfe; white-space:pre-wrap; font-size:13px; }
+        pre { overflow:auto; max-height:640px; padding:12px; border-radius:8px; background:var(--code); color:#f2f4f7; font-size:12px; line-height:1.5; }
+        @media (max-width:1000px) { header, main { padding-left:16px; padding-right:16px; } main { grid-template-columns:1fr; } .row { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+<header>
+    <h1>OPC AI 点评生成</h1>
+    <p>粘贴文章内容，dry-run 检查 prompt/payload，或调用 OpenAI-compatible Chat Completions 生成点评并落库。</p>
+</header>
+<main>
+    <section>
+        <h2>生成参数</h2>
+        <div class="row">
+            <div><label for="columnId">栏目 ID</label><input id="columnId" placeholder="jinan-opc-example"></div>
+            <div><label for="articleUuid">文章 UUID</label><input id="articleUuid" placeholder="可留空"></div>
+        </div>
+        <label for="title">标题</label>
+        <input id="title" placeholder="文章标题">
+        <label for="sourceUrl">来源 URL</label>
+        <input id="sourceUrl" placeholder="https://example.com/article">
+        <label for="content">文章正文</label>
+        <textarea id="content" placeholder="粘贴文章正文"></textarea>
+        <div class="row">
+            <div><label for="model">模型，可留空走环境变量</label><input id="model" placeholder="gpt-4o-mini"></div>
+            <div><label for="persist">落库</label><select id="persist"><option value="true">true</option><option value="false">false</option></select></div>
+        </div>
+        <label for="baseUrl">Base URL，可留空走环境变量</label>
+        <input id="baseUrl" placeholder="https://api.openai.com/v1">
+        <label for="apiKey">API Key，可留空走环境变量；生产环境建议不要在页面输入</label>
+        <input id="apiKey" type="password" placeholder="OPENAI_COMPAT_API_KEY">
+        <div class="actions">
+            <button id="dryRunBtn" class="secondary">Dry Run</button>
+            <button id="generateBtn">生成点评</button>
+        </div>
+        <div id="status" class="status">等待操作。</div>
+    </section>
+    <section>
+        <h2>结果</h2>
+        <pre id="output">{}</pre>
+    </section>
+</main>
+<script>
+const API = '/api/opc-columns';
+function payload(dryRun){
+    const p = {
+        dry_run: dryRun,
+        column_id: document.getElementById('columnId').value.trim(),
+        article_uuid: document.getElementById('articleUuid').value.trim(),
+        title: document.getElementById('title').value.trim(),
+        source_url: document.getElementById('sourceUrl').value.trim(),
+        content: document.getElementById('content').value.trim(),
+        persist: document.getElementById('persist').value === 'true'
+    };
+    const model = document.getElementById('model').value.trim();
+    const baseUrl = document.getElementById('baseUrl').value.trim();
+    const apiKey = document.getElementById('apiKey').value.trim();
+    if(model) p.model = model;
+    if(baseUrl) p.base_url = baseUrl;
+    if(apiKey) p.api_key = apiKey;
+    return p;
+}
+async function apiFetch(body){
+    const response = await fetch(`${API}/editorial-reviews/generate`, {
+        method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    });
+    const text = await response.text();
+    let data; try { data = text ? JSON.parse(text) : {}; } catch { data={raw:text}; }
+    if(!response.ok) throw new Error(data.error || data.message || response.statusText || 'Request failed');
+    return data;
+}
+async function run(dryRun){
+    document.getElementById('status').textContent = dryRun ? '生成 dry-run payload...' : '调用 AI 生成中...';
+    try{
+        const result = await apiFetch(payload(dryRun));
+        document.getElementById('status').textContent = dryRun ? 'Dry run 完成。' : '生成完成。';
+        document.getElementById('output').textContent = JSON.stringify(result.data, null, 2);
+    }catch(err){
+        document.getElementById('status').textContent = err.message;
+    }
+}
+document.getElementById('dryRunBtn').addEventListener('click', () => run(true));
+document.getElementById('generateBtn').addEventListener('click', () => run(false));
+</script>
+</body>
+</html>
