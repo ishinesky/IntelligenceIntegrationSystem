@@ -54,7 +54,7 @@ def create_opc_resource_blueprint(
             payload = {
                 "column_id": request.args.get("column_id", ""),
                 "keyword": request.args.get("keyword", ""),
-                "status": request.args.get("status", "published,reviewed"),
+                "status": request.args.get("status", "published"),
                 "min_quality": request.args.get("min_quality", 0),
                 "min_actionability": request.args.get("min_actionability", 0),
                 "limit": request.args.get("limit", 50),
