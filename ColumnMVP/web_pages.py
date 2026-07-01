@@ -27,6 +27,11 @@ def create_column_admin_blueprint(
     def opc_column_admin():
         return render_template("opc_column_admin.html")
 
+    @bp.get("/opc-columns/source-quality")
+    @secure
+    def opc_source_quality():
+        return render_template("opc_source_quality.html")
+
     return bp
 
 

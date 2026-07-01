@@ -7,6 +7,7 @@ from .dynamic_crawler_config import build_crawler_config
 from .models import ColumnConfig, SourceConfig, TopicBrief
 from .source_candidate_service import SourceCandidateService
 from .source_discovery import build_search_queries, candidates_from_urls
+from .source_quality import SourceQualityService
 from .source_validator import validate_and_update, validate_source
 from .topic_builder import build_column_from_topic
 
@@ -30,9 +31,15 @@ class ColumnService:
     web routes, dialogue agents, and future background jobs.
     """
 
-    def __init__(self, store: Optional[ColumnStore] = None, candidate_service: Optional[SourceCandidateService] = None):
+    def __init__(
+        self,
+        store: Optional[ColumnStore] = None,
+        candidate_service: Optional[SourceCandidateService] = None,
+        quality_service: Optional[SourceQualityService] = None,
+    ):
         self.store = store or ColumnStore()
         self.candidate_service = candidate_service or SourceCandidateService()
+        self.quality_service = quality_service or SourceQualityService()
 
     # ------------------------------ topic / creation ------------------------------
 
@@ -187,6 +194,10 @@ class ColumnService:
             "notes": result.notes,
             "source_config": result.to_source_config().to_dict(),
         }
+
+    def audit_source_quality(self, column_id: str, *, live_validate: bool = True) -> Dict[str, Any]:
+        column = self.store.load(column_id)
+        return self.quality_service.audit_column_sources(column, live_validate=live_validate)
 
     # ------------------------------ crawl preview ------------------------------
 

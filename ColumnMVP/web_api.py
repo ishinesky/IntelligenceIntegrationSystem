@@ -175,6 +175,21 @@ def create_column_blueprint(
             traceback.print_exc()
             return _json_error(str(exc), 500)
 
+    @bp.get("/<column_id>/source-quality")
+    @secure
+    def source_quality(column_id: str):
+        try:
+            live_validate = request.args.get("live_validate", "true").lower() in {"1", "true", "yes", "on"}
+            return jsonify({"success": True, "data": column_service.audit_source_quality(
+                column_id,
+                live_validate=live_validate,
+            )})
+        except FileNotFoundError:
+            return _json_error("column not found", 404)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
     @bp.get("/<column_id>/crawler-config")
     @secure
     def crawler_config_preview(column_id: str):
