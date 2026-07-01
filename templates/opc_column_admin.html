@@ -30,6 +30,7 @@
         }
         h1 { margin: 0 0 8px; font-size: 24px; }
         h2 { margin: 0 0 16px; font-size: 18px; }
+        h3 { margin: 0 0 6px; font-size: 16px; }
         p { margin: 0; color: var(--muted); line-height: 1.6; }
         main {
             display: grid;
@@ -97,14 +98,15 @@
             gap: 10px;
             margin-bottom: 12px;
         }
-        .column-card {
+        .column-card, .candidate-card {
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 14px;
             margin-bottom: 12px;
             background: #fff;
         }
-        .column-card h3 { margin: 0 0 6px; font-size: 16px; }
+        .candidate-card { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+        .candidate-card input[type="checkbox"] { width: auto; margin-top: 4px; }
         .meta {
             display: flex;
             flex-wrap: wrap;
@@ -124,6 +126,8 @@
         .badge.off { background: #f2f4f7; color: #667085; }
         .badge.ok { background: #ecfdf3; color: #027a48; }
         .badge.warn { background: #fffaeb; color: #b54708; }
+        .badge.bad { background: #fef3f2; color: #b42318; }
+        a { color: var(--primary); word-break: break-all; }
         pre {
             overflow: auto;
             max-height: 420px;
@@ -134,22 +138,18 @@
             font-size: 12px;
             line-height: 1.5;
         }
-        .split {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
+        .wide { grid-column: 1 / -1; }
         @media (max-width: 1000px) {
             main { grid-template-columns: 1fr; padding: 16px; }
             header { padding: 20px 16px 14px; }
-            .split { grid-template-columns: 1fr; }
+            .row { flex-direction: column; align-items: stretch; }
         }
     </style>
 </head>
 <body>
 <header>
     <h1>OPC 栏目管理</h1>
-    <p>创建选题栏目、追加公开数据源、启用/禁用栏目，并预览动态 crawler config。该页面调用 <code>/api/opc-columns</code>。</p>
+    <p>创建选题栏目、发现候选数据源、追加公开数据源、启用/禁用栏目，并预览动态 crawler config。该页面调用 <code>/api/opc-columns</code>。</p>
 </header>
 
 <main>
@@ -215,10 +215,46 @@
         </div>
         <pre id="previewOutput">{}</pre>
     </section>
+
+    <section class="wide">
+        <h2>发现候选数据源</h2>
+        <div class="row">
+            <div>
+                <label for="discoverColumnId">栏目 ID</label>
+                <input id="discoverColumnId" placeholder="jinan-opc">
+            </div>
+            <div>
+                <label for="discoverProvider">Provider</label>
+                <select id="discoverProvider">
+                    <option value="auto">auto</option>
+                    <option value="manual">manual seed URLs</option>
+                    <option value="bing">bing</option>
+                    <option value="null">null</option>
+                </select>
+            </div>
+            <div>
+                <label for="discoverMaxQueries">Max Queries</label>
+                <input id="discoverMaxQueries" type="number" min="1" max="20" value="8">
+            </div>
+            <div>
+                <label for="discoverResultsPerQuery">Results / Query</label>
+                <input id="discoverResultsPerQuery" type="number" min="1" max="20" value="5">
+            </div>
+        </div>
+        <label for="discoverSeedUrls">手动种子 URL，每行一个。manual provider 会直接把这些 URL 转为候选源；auto 在无搜索 API 时也会回退到这里。</label>
+        <textarea id="discoverSeedUrls" placeholder="https://www.jinan.gov.cn/&#10;https://example.gov.cn/news/"></textarea>
+        <div class="actions">
+            <button id="discoverBtn">发现候选源</button>
+            <button id="addSelectedCandidatesBtn" class="success">将勾选候选源加入栏目</button>
+        </div>
+        <div id="discoverStatus" class="status">等待操作。</div>
+        <div id="candidateList"></div>
+    </section>
 </main>
 
 <script>
 const API = '/api/opc-columns';
+let lastCandidates = [];
 
 function splitCsv(value) {
     return value.split(',').map(x => x.trim()).filter(Boolean);
@@ -291,6 +327,7 @@ async function loadColumns() {
                         <button class="danger" onclick="setEnabled('${escapeJs(column.id)}', false)">禁用</button>
                         <button class="ghost" onclick="copyColumnId('${escapeJs(column.id)}')">复制 ID</button>
                         <button class="secondary" onclick="previewColumn('${escapeJs(column.id)}')">预览 Config</button>
+                        <button onclick="discoverForColumn('${escapeJs(column.id)}')">发现源</button>
                     </div>
                 </div>
             `;
@@ -381,6 +418,100 @@ async function validateFirstSource() {
     }
 }
 
+function discoveryPayload() {
+    return {
+        provider: document.getElementById('discoverProvider').value,
+        seed_urls: splitLines(document.getElementById('discoverSeedUrls').value),
+        max_queries: Number(document.getElementById('discoverMaxQueries').value || 8),
+        results_per_query: Number(document.getElementById('discoverResultsPerQuery').value || 5),
+        validate_sources: true
+    };
+}
+
+async function discoverForColumn(columnId) {
+    document.getElementById('discoverColumnId').value = columnId;
+    await discoverSources();
+}
+
+async function discoverSources() {
+    const columnId = document.getElementById('discoverColumnId').value.trim();
+    if (!columnId) {
+        showStatus('discoverStatus', '栏目 ID 必填。');
+        return;
+    }
+    showStatus('discoverStatus', '发现候选源中...');
+    document.getElementById('candidateList').innerHTML = '';
+    try {
+        const result = await apiFetch(`${API}/${encodeURIComponent(columnId)}/discover-sources`, {
+            method: 'POST',
+            body: JSON.stringify(discoveryPayload())
+        });
+        lastCandidates = result.data.candidates || [];
+        showStatus('discoverStatus', {
+            provider: result.data.provider,
+            queries: result.data.queries,
+            warnings: result.data.warnings,
+            candidate_count: lastCandidates.length
+        });
+        renderCandidates();
+    } catch (err) {
+        showStatus('discoverStatus', err.message);
+    }
+}
+
+function renderCandidates() {
+    const container = document.getElementById('candidateList');
+    if (!lastCandidates.length) {
+        container.innerHTML = '<p>没有候选源。若未配置 BING_SEARCH_API_KEY，可选择 manual provider 并输入种子 URL。</p>';
+        return;
+    }
+    container.innerHTML = lastCandidates.map((candidate, index) => {
+        const validation = candidate.validation || {};
+        const okBadge = validation.ok ? '<span class="badge ok">valid</span>' : '<span class="badge bad">invalid/manual</span>';
+        const existedBadge = candidate.already_in_column ? '<span class="badge warn">already in column</span>' : '';
+        const rssBadge = validation.has_rss_hint ? '<span class="badge ok">rss</span>' : '';
+        const score = Number(candidate.score || 0).toFixed(2);
+        return `
+            <div class="candidate-card">
+                <input type="checkbox" class="candidate-check" data-index="${index}" ${candidate.already_in_column ? 'disabled' : ''}>
+                <div>
+                    <h3>${escapeHtml(candidate.title || candidate.url)}</h3>
+                    <p><a href="${escapeHtml(candidate.url)}" target="_blank" rel="noreferrer">${escapeHtml(candidate.url)}</a></p>
+                    <p>${escapeHtml(candidate.snippet || '')}</p>
+                    <div class="meta">
+                        <span>score: ${score}</span>
+                        <span>provider: ${escapeHtml(candidate.provider || '')}</span>
+                        ${okBadge}${existedBadge}${rssBadge}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function addSelectedCandidates() {
+    const columnId = document.getElementById('discoverColumnId').value.trim();
+    const selected = [...document.querySelectorAll('.candidate-check:checked')]
+        .map(input => lastCandidates[Number(input.dataset.index)])
+        .filter(Boolean);
+    const urls = [...new Set(selected.map(candidate => candidate.url).filter(Boolean))];
+    if (!columnId || !urls.length) {
+        showStatus('discoverStatus', '请先选择候选源。');
+        return;
+    }
+    showStatus('discoverStatus', `追加 ${urls.length} 个候选源中...`);
+    try {
+        const result = await apiFetch(`${API}/${encodeURIComponent(columnId)}/sources`, {
+            method: 'POST',
+            body: JSON.stringify({ urls, validate_sources: true })
+        });
+        showStatus('discoverStatus', result.data);
+        await loadColumns();
+    } catch (err) {
+        showStatus('discoverStatus', err.message);
+    }
+}
+
 async function previewColumn(columnId) {
     document.getElementById('previewColumnId').value = columnId;
     await previewCrawlerConfig();
@@ -403,6 +534,7 @@ function copyColumnId(columnId) {
     navigator.clipboard?.writeText(columnId);
     document.getElementById('sourceColumnId').value = columnId;
     document.getElementById('previewColumnId').value = columnId;
+    document.getElementById('discoverColumnId').value = columnId;
 }
 
 function escapeHtml(value) {
@@ -425,6 +557,8 @@ document.getElementById('refreshBtnTop').addEventListener('click', loadColumns);
 document.getElementById('addSourcesBtn').addEventListener('click', addSources);
 document.getElementById('validateSourceBtn').addEventListener('click', validateFirstSource);
 document.getElementById('previewBtn').addEventListener('click', previewCrawlerConfig);
+document.getElementById('discoverBtn').addEventListener('click', discoverSources);
+document.getElementById('addSelectedCandidatesBtn').addEventListener('click', addSelectedCandidates);
 loadColumns();
 </script>
 </body>
