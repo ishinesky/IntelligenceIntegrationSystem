@@ -98,6 +98,44 @@ def create_column_blueprint(
             traceback.print_exc()
             return _json_error(str(exc), 500)
 
+    @bp.get("/editorial-reviews")
+    @secure
+    def list_editorial_reviews():
+        try:
+            payload = {
+                "column_id": request.args.get("column_id", ""),
+                "article_uuid": request.args.get("article_uuid", ""),
+                "status": request.args.get("status", ""),
+                "limit": request.args.get("limit", 50),
+            }
+            return jsonify({"success": True, "data": column_service.list_editorial_reviews(payload)})
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
+    @bp.post("/editorial-reviews")
+    @secure
+    def create_editorial_review():
+        try:
+            payload = request.get_json(force=True) or {}
+            return jsonify({"success": True, "data": column_service.create_editorial_review(payload)}), 201
+        except ValueError as exc:
+            return _json_error(str(exc), 400)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
+    @bp.get("/editorial-reviews/<review_id>")
+    @secure
+    def get_editorial_review(review_id: str):
+        try:
+            return jsonify({"success": True, "data": column_service.get_editorial_review(review_id)})
+        except FileNotFoundError:
+            return _json_error("review not found", 404)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
     @bp.get("/<column_id>")
     @secure
     def get_column(column_id: str):

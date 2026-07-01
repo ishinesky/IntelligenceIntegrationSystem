@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPC Editorial Reviews</title>
+    <style>
+        :root { --bg:#f6f7f9; --panel:#fff; --border:#d9dee7; --text:#172033; --muted:#667085; --primary:#1f5eff; --success:#027a48; --warn:#b54708; --danger:#b42318; --code:#101828; }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+        header { padding:24px 32px 16px; background:var(--panel); border-bottom:1px solid var(--border); }
+        main { padding:20px 32px 32px; display:grid; grid-template-columns:minmax(340px,460px) 1fr; gap:20px; }
+        section { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px; min-width:0; }
+        h1 { margin:0 0 8px; font-size:24px; }
+        h2 { margin:0 0 16px; font-size:18px; }
+        h3 { margin:0 0 6px; font-size:16px; }
+        p { margin:0; color:var(--muted); line-height:1.6; }
+        label { display:block; font-size:13px; font-weight:600; margin:12px 0 6px; }
+        input, textarea, select { width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:14px; background:#fff; }
+        textarea { min-height:76px; resize:vertical; }
+        button { border:0; border-radius:8px; background:var(--primary); color:#fff; cursor:pointer; padding:9px 12px; font-size:14px; font-weight:600; }
+        button.secondary { background:#344054; }
+        .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+        .status { margin-top:12px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); color:var(--muted); background:#fbfcfe; white-space:pre-wrap; font-size:13px; }
+        .review-card { border:1px solid var(--border); border-radius:10px; padding:14px; margin-bottom:12px; background:#fff; }
+        .meta { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; color:var(--muted); font-size:12px; }
+        .badge { display:inline-block; padding:3px 8px; border-radius:999px; background:#eef2ff; color:#3538cd; font-size:12px; }
+        .badge.good { background:#ecfdf3; color:var(--success); }
+        .badge.warn { background:#fffaeb; color:var(--warn); }
+        pre { overflow:auto; max-height:420px; padding:12px; border-radius:8px; background:var(--code); color:#f2f4f7; font-size:12px; line-height:1.5; }
+        .wide { grid-column:1 / -1; }
+        @media (max-width:1000px) { header, main { padding-left:16px; padding-right:16px; } main { grid-template-columns:1fr; } .row { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+<header>
+    <h1>OPC AI 点评</h1>
+    <p>落库并展示文章级 AI 编辑点评。事实摘要、分析、AI 观点和行动建议保持分离，避免把观点混入事实。</p>
+</header>
+<main>
+    <section>
+        <h2>创建点评记录</h2>
+        <div class="row">
+            <div>
+                <label for="columnId">栏目 ID</label>
+                <input id="columnId" placeholder="jinan-opc-example">
+            </div>
+            <div>
+                <label for="articleUuid">文章 UUID</label>
+                <input id="articleUuid" placeholder="article UUID，可留空">
+            </div>
+        </div>
+        <label for="title">标题</label>
+        <input id="title" placeholder="文章标题">
+        <label for="sourceUrl">来源 URL</label>
+        <input id="sourceUrl" placeholder="https://example.com/article">
+
+        <label for="factSummary">事实摘要</label>
+        <textarea id="factSummary"></textarea>
+        <label for="whyItMatters">为什么重要</label>
+        <textarea id="whyItMatters"></textarea>
+        <label for="opportunity">机会点</label>
+        <textarea id="opportunity"></textarea>
+        <label for="risk">风险点</label>
+        <textarea id="risk"></textarea>
+        <label for="whoShouldCare">关注人群，逗号分隔</label>
+        <input id="whoShouldCare" placeholder="OPC创业者,AI应用开发者,园区运营方">
+        <label for="actionSuggestion">行动建议</label>
+        <textarea id="actionSuggestion"></textarea>
+        <label for="editorialView">AI 编辑观点</label>
+        <textarea id="editorialView"></textarea>
+
+        <div class="row">
+            <div>
+                <label for="sourceReliability">来源可靠性</label>
+                <select id="sourceReliability"><option>S</option><option>A</option><option>B</option><option>C</option></select>
+            </div>
+            <div>
+                <label for="status">状态</label>
+                <select id="status"><option>reviewed</option><option>draft</option><option>published</option><option>rejected</option></select>
+            </div>
+        </div>
+        <div class="row">
+            <div><label for="qualityScore">内容质量 0-10</label><input id="qualityScore" type="number" min="0" max="10" step="0.1" value="0"></div>
+            <div><label for="actionabilityScore">可行动性 0-10</label><input id="actionabilityScore" type="number" min="0" max="10" step="0.1" value="0"></div>
+        </div>
+        <label for="confidence">置信度 0-1</label>
+        <input id="confidence" type="number" min="0" max="1" step="0.01" value="0">
+        <div class="actions">
+            <button id="createBtn">保存点评</button>
+            <button id="listBtn" class="secondary">刷新列表</button>
+        </div>
+        <div id="createStatus" class="status">等待操作。</div>
+    </section>
+
+    <section>
+        <h2>点评列表</h2>
+        <div class="row">
+            <input id="filterColumnId" placeholder="按栏目 ID 过滤，可留空">
+            <input id="filterStatus" placeholder="按状态过滤，可留空">
+        </div>
+        <div class="actions"><button id="filterBtn" class="secondary">查询</button></div>
+        <div id="reviews"></div>
+    </section>
+
+    <section class="wide">
+        <h2>原始 JSON</h2>
+        <pre id="rawOutput">{}</pre>
+    </section>
+</main>
+<script>
+const API = '/api/opc-columns';
+function splitCsv(value){ return value.split(',').map(x=>x.trim()).filter(Boolean); }
+function escapeHtml(value){ return String(value||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
+function num(id){ const v=document.getElementById(id).value; return v==='' ? 0 : Number(v); }
+async function apiFetch(url, options={}){
+    const response = await fetch(url, { credentials:'same-origin', headers:{'Content-Type':'application/json', ...(options.headers||{})}, ...options });
+    const text = await response.text();
+    let data; try { data = text ? JSON.parse(text) : {}; } catch { data={raw:text}; }
+    if(!response.ok) throw new Error(data.error || data.message || response.statusText || 'Request failed');
+    return data;
+}
+function payloadFromForm(){
+    return {
+        column_id: document.getElementById('columnId').value.trim(),
+        article_uuid: document.getElementById('articleUuid').value.trim(),
+        title: document.getElementById('title').value.trim(),
+        source_url: document.getElementById('sourceUrl').value.trim(),
+        status: document.getElementById('status').value,
+        review: {
+            FACT_SUMMARY: document.getElementById('factSummary').value.trim(),
+            WHY_IT_MATTERS: document.getElementById('whyItMatters').value.trim(),
+            OPPORTUNITY: document.getElementById('opportunity').value.trim(),
+            RISK: document.getElementById('risk').value.trim(),
+            WHO_SHOULD_CARE: splitCsv(document.getElementById('whoShouldCare').value),
+            ACTION_SUGGESTION: document.getElementById('actionSuggestion').value.trim(),
+            EDITORIAL_VIEW: document.getElementById('editorialView').value.trim(),
+            SOURCE_RELIABILITY: document.getElementById('sourceReliability').value,
+            CONTENT_QUALITY_SCORE: num('qualityScore'),
+            ACTIONABILITY_SCORE: num('actionabilityScore'),
+            CONFIDENCE: num('confidence')
+        }
+    };
+}
+async function createReview(){
+    document.getElementById('createStatus').textContent = '保存中...';
+    try{
+        const result = await apiFetch(`${API}/editorial-reviews`, { method:'POST', body: JSON.stringify(payloadFromForm()) });
+        document.getElementById('createStatus').textContent = '已保存。';
+        document.getElementById('rawOutput').textContent = JSON.stringify(result.data, null, 2);
+        await listReviews();
+    }catch(err){ document.getElementById('createStatus').textContent = err.message; }
+}
+async function listReviews(){
+    const columnId = document.getElementById('filterColumnId').value.trim();
+    const status = document.getElementById('filterStatus').value.trim();
+    const params = new URLSearchParams();
+    if(columnId) params.set('column_id', columnId);
+    if(status) params.set('status', status);
+    params.set('limit', '50');
+    try{
+        const result = await apiFetch(`${API}/editorial-reviews?${params.toString()}`);
+        renderReviews(result.data.reviews || []);
+        document.getElementById('rawOutput').textContent = JSON.stringify(result.data, null, 2);
+    }catch(err){ document.getElementById('reviews').innerHTML = `<p style="color:var(--danger)">${escapeHtml(err.message)}</p>`; }
+}
+function renderReviews(reviews){
+    const node = document.getElementById('reviews');
+    if(!reviews.length){ node.innerHTML = '<p>暂无点评。</p>'; return; }
+    node.innerHTML = reviews.map(record => {
+        const r = record.review || {};
+        return `<div class="review-card">
+            <h3>${escapeHtml(record.title || record.article_uuid)} <span class="badge good">${escapeHtml(record.status)}</span></h3>
+            <div class="meta"><span>ID: ${escapeHtml(record.review_id)}</span><span>column: ${escapeHtml(record.column_id || '-')}</span><span>quality: ${r.CONTENT_QUALITY_SCORE}</span><span>action: ${r.ACTIONABILITY_SCORE}</span><span>confidence: ${r.CONFIDENCE}</span></div>
+            <p><strong>事实摘要：</strong>${escapeHtml(r.FACT_SUMMARY)}</p>
+            <p><strong>为什么重要：</strong>${escapeHtml(r.WHY_IT_MATTERS)}</p>
+            <p><strong>机会：</strong>${escapeHtml(r.OPPORTUNITY)}</p>
+            <p><strong>风险：</strong>${escapeHtml(r.RISK)}</p>
+            <p><strong>行动建议：</strong>${escapeHtml(r.ACTION_SUGGESTION)}</p>
+            <p><strong>AI观点：</strong>${escapeHtml(r.EDITORIAL_VIEW)}</p>
+        </div>`;
+    }).join('');
+}
+document.getElementById('createBtn').addEventListener('click', createReview);
+document.getElementById('listBtn').addEventListener('click', listReviews);
+document.getElementById('filterBtn').addEventListener('click', listReviews);
+listReviews();
+</script>
+</body>
+</html>
