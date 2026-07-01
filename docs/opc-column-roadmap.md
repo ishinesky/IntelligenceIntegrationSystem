@@ -37,15 +37,26 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - API and CLI discovery entrypoints.
 - Admin page support for candidate review and approval.
 
-## Next: Source governance and quality loop
+### PR #6: Source quality governance
+
+- Source quality audit service.
+- CLI source audit command.
+- API endpoint for `/source-quality`.
+- Browser page for reviewing source quality.
+- Initial promote / keep / review / disable recommendations.
+
+## Next: Runtime quality signals
 
 Target flow:
 
 ```text
 Column sources
-  -> crawl success / failure stats
-  -> freshness checks
-  -> relevance checks
+  -> crawler governance stats
+  -> crawl success rate
+  -> last successful crawl time
+  -> article freshness
+  -> duplicate ratio
+  -> topic relevance
   -> source quality score
   -> suggested disable / keep / promote
 ```
@@ -53,9 +64,9 @@ Column sources
 Recommended implementation:
 
 ```text
-ColumnMVP/source_quality.py
-ColumnMVP/cli_audit_sources.py
-/api/opc-columns/<column_id>/source-quality
+ColumnMVP/source_runtime_metrics.py
+ColumnMVP/cli_source_metrics.py
+/api/opc-columns/<column_id>/source-runtime-metrics
 ```
 
 ## Later: Editorial publishing
