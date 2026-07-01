@@ -8,6 +8,7 @@ executed dynamically.
 from .models import ColumnConfig, SourceConfig, TopicBrief, ValidationResult
 from .column_store import ColumnStore
 from .column_service import ColumnService
+from .web_service_integration import register_opc_column_routes, patch_intelligence_hub_web_service
 
 __all__ = [
     "ColumnConfig",
@@ -16,4 +17,6 @@ __all__ = [
     "ValidationResult",
     "ColumnStore",
     "ColumnService",
+    "register_opc_column_routes",
+    "patch_intelligence_hub_web_service",
 ]
