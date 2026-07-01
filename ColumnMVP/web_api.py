@@ -98,6 +98,31 @@ def create_column_blueprint(
             traceback.print_exc()
             return _json_error(str(exc), 500)
 
+    @bp.get("/articles/lookup")
+    @secure
+    def lookup_article():
+        try:
+            payload = {
+                "article_uuid": request.args.get("article_uuid", request.args.get("uuid", "")),
+                "source_url": request.args.get("source_url", request.args.get("url", "")),
+            }
+            return jsonify({"success": True, "data": column_service.lookup_article(payload)})
+        except FileNotFoundError:
+            return _json_error("article not found", 404)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
+    @bp.post("/articles/import")
+    @secure
+    def import_article():
+        try:
+            payload = request.get_json(force=True) or {}
+            return jsonify({"success": True, "data": column_service.import_article(payload)}), 201
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
     @bp.get("/editorial-reviews")
     @secure
     def list_editorial_reviews():
@@ -131,6 +156,22 @@ def create_column_blueprint(
         try:
             payload = request.get_json(force=True) or {}
             return jsonify({"success": True, "data": column_service.generate_editorial_review(payload)})
+        except ValueError as exc:
+            return _json_error(str(exc), 400)
+        except RuntimeError as exc:
+            return _json_error(str(exc), 503)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
+    @bp.post("/editorial-reviews/generate-from-article")
+    @secure
+    def generate_editorial_review_from_article():
+        try:
+            payload = request.get_json(force=True) or {}
+            return jsonify({"success": True, "data": column_service.generate_editorial_review_from_article(payload)})
+        except FileNotFoundError:
+            return _json_error("article not found", 404)
         except ValueError as exc:
             return _json_error(str(exc), 400)
         except RuntimeError as exc:
