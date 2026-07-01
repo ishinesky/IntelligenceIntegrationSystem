@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPC Runtime Metrics</title>
+    <style>
+        :root {
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --border: #d9dee7;
+            --text: #172033;
+            --muted: #667085;
+            --primary: #1f5eff;
+            --danger: #b42318;
+            --success: #027a48;
+            --warn: #b54708;
+            --code: #101828;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+        header { padding: 24px 32px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+        main { padding: 20px 32px 32px; display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 20px; }
+        section { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; min-width: 0; }
+        h1 { margin: 0 0 8px; font-size: 24px; }
+        h2 { margin: 0 0 16px; font-size: 18px; }
+        h3 { margin: 0 0 6px; font-size: 16px; }
+        p { margin: 0; color: var(--muted); line-height: 1.6; }
+        label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+        input, select, textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 14px; background: #fff; }
+        textarea { min-height: 82px; resize: vertical; }
+        button { border: 0; border-radius: 8px; background: var(--primary); color: #fff; cursor: pointer; padding: 9px 12px; font-size: 14px; font-weight: 600; }
+        button.secondary { background: #344054; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+        .status { margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); color: var(--muted); background: #fbfcfe; white-space: pre-wrap; font-size: 13px; }
+        .source-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px; background: #fff; }
+        .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; color: var(--muted); font-size: 12px; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2ff; color: #3538cd; font-size: 12px; }
+        .badge.promote { background: #ecfdf3; color: var(--success); }
+        .badge.keep { background: #eff8ff; color: #175cd3; }
+        .badge.review { background: #fffaeb; color: var(--warn); }
+        .badge.disable { background: #fef3f2; color: var(--danger); }
+        pre { overflow: auto; max-height: 420px; padding: 12px; border-radius: 8px; background: var(--code); color: #f2f4f7; font-size: 12px; line-height: 1.5; }
+        a { color: var(--primary); word-break: break-all; }
+        .wide { grid-column: 1 / -1; }
+        @media (max-width: 1000px) { header, main { padding-left: 16px; padding-right: 16px; } main { grid-template-columns: 1fr; } .row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<header>
+    <h1>OPC 运行时指标</h1>
+    <p>记录和查看栏目数据源的运行时表现。第一版使用 JSONL 存储，后续可接入 crawler governance 或文章归档指标。</p>
+</header>
+<main>
+    <section>
+        <h2>记录事件</h2>
+        <label for="columnId">栏目 ID</label>
+        <input id="columnId" placeholder="jinan-opc-example">
+
+        <label for="sourceUrl">Source URL</label>
+        <input id="sourceUrl" placeholder="https://www.jinan.gov.cn/">
+
+        <div class="row">
+            <div>
+                <label for="eventType">事件类型</label>
+                <select id="eventType">
+                    <option value="crawl_success">crawl_success</option>
+                    <option value="crawl_failure">crawl_failure</option>
+                    <option value="article">article</option>
+                    <option value="duplicate">duplicate</option>
+                    <option value="skipped">skipped</option>
+                </select>
+            </div>
+            <div>
+                <label for="latencyMs">Latency ms</label>
+                <input id="latencyMs" type="number" min="0" placeholder="1200">
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <label for="articleCount">Article count</label>
+                <input id="articleCount" type="number" min="0" value="0">
+            </div>
+            <div>
+                <label for="duplicateCount">Duplicate count</label>
+                <input id="duplicateCount" type="number" min="0" value="0">
+            </div>
+        </div>
+
+        <div class="row">
+            <div>
+                <label for="relevanceScore">Relevance 0-1</label>
+                <input id="relevanceScore" type="number" min="0" max="1" step="0.01" placeholder="0.8">
+            </div>
+            <div>
+                <label for="qualityScore">Quality 0-1</label>
+                <input id="qualityScore" type="number" min="0" max="1" step="0.01" placeholder="0.8">
+            </div>
+        </div>
+
+        <label for="actionabilityScore">Actionability 0-1</label>
+        <input id="actionabilityScore" type="number" min="0" max="1" step="0.01" placeholder="0.7">
+
+        <label for="message">Message</label>
+        <textarea id="message" placeholder="可选备注"></textarea>
+
+        <div class="actions">
+            <button id="recordBtn">记录事件</button>
+            <button id="summaryBtn" class="secondary">查看汇总</button>
+        </div>
+        <div id="recordStatus" class="status">等待操作。</div>
+    </section>
+
+    <section>
+        <h2>汇总</h2>
+        <div id="summary"></div>
+        <div id="sources"></div>
+    </section>
+
+    <section class="wide">
+        <h2>原始 JSON</h2>
+        <pre id="rawOutput">{}</pre>
+    </section>
+</main>
+<script>
+const API = '/api/opc-columns';
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function maybeNumber(id) {
+    const value = document.getElementById(id).value;
+    return value === '' ? null : Number(value);
+}
+
+async function apiFetch(url, options = {}) {
+    const response = await fetch(url, {
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options
+    });
+    const text = await response.text();
+    let data;
+    try { data = text ? JSON.parse(text) : {}; }
+    catch { data = { raw: text }; }
+    if (!response.ok) throw new Error(data.error || data.message || response.statusText || 'Request failed');
+    return data;
+}
+
+function payloadFromForm() {
+    return {
+        source_url: document.getElementById('sourceUrl').value.trim(),
+        event_type: document.getElementById('eventType').value,
+        article_count: maybeNumber('articleCount') || 0,
+        duplicate_count: maybeNumber('duplicateCount') || 0,
+        relevance_score: maybeNumber('relevanceScore'),
+        quality_score: maybeNumber('qualityScore'),
+        actionability_score: maybeNumber('actionabilityScore'),
+        latency_ms: maybeNumber('latencyMs'),
+        message: document.getElementById('message').value.trim()
+    };
+}
+
+async function recordEvent() {
+    const columnId = document.getElementById('columnId').value.trim();
+    const payload = payloadFromForm();
+    if (!columnId || !payload.source_url) {
+        document.getElementById('recordStatus').textContent = '栏目 ID 和 Source URL 必填。';
+        return;
+    }
+    document.getElementById('recordStatus').textContent = '记录中...';
+    try {
+        const result = await apiFetch(`${API}/${encodeURIComponent(columnId)}/source-runtime-metrics`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        document.getElementById('recordStatus').textContent = '已记录。';
+        document.getElementById('rawOutput').textContent = JSON.stringify(result.data, null, 2);
+        await loadSummary();
+    } catch (err) {
+        document.getElementById('recordStatus').textContent = err.message;
+    }
+}
+
+async function loadSummary() {
+    const columnId = document.getElementById('columnId').value.trim();
+    if (!columnId) {
+        document.getElementById('recordStatus').textContent = '栏目 ID 必填。';
+        return;
+    }
+    document.getElementById('recordStatus').textContent = '加载汇总中...';
+    try {
+        const result = await apiFetch(`${API}/${encodeURIComponent(columnId)}/source-runtime-metrics`);
+        document.getElementById('recordStatus').textContent = '汇总完成。';
+        document.getElementById('rawOutput').textContent = JSON.stringify(result.data, null, 2);
+        renderSummary(result.data);
+    } catch (err) {
+        document.getElementById('recordStatus').textContent = err.message;
+    }
+}
+
+function renderSummary(report) {
+    const summary = document.getElementById('summary');
+    summary.innerHTML = `
+        <p>Column: <strong>${escapeHtml(report.column?.name || '')}</strong> / <code>${escapeHtml(report.column?.id || '')}</code></p>
+        <div class="meta">
+            <span class="badge">records: ${report.record_count || 0}</span>
+            <span class="badge">sources: ${report.column?.source_count || 0}</span>
+            <span class="badge">orphan: ${(report.orphan_sources || []).length}</span>
+        </div>
+    `;
+
+    const sources = report.sources || [];
+    const container = document.getElementById('sources');
+    if (!sources.length) {
+        container.innerHTML = '<p>暂无运行时指标。</p>';
+        return;
+    }
+    container.innerHTML = sources.map(source => {
+        const recommendation = source.recommendation || 'review';
+        return `
+            <div class="source-card">
+                <h3>${escapeHtml(source.source_name || source.source_url)} <span class="badge ${escapeHtml(recommendation)}">${escapeHtml(recommendation)}</span></h3>
+                <p><a href="${escapeHtml(source.source_url)}" target="_blank" rel="noreferrer">${escapeHtml(source.source_url)}</a></p>
+                <div class="meta">
+                    <span>runtime_score: ${Number(source.runtime_score || 0).toFixed(2)}</span>
+                    <span>success_rate: ${source.success_rate == null ? '-' : Number(source.success_rate).toFixed(2)}</span>
+                    <span>success: ${source.success_count}</span>
+                    <span>failure: ${source.failure_count}</span>
+                    <span>articles: ${source.article_count + source.article_event_count}</span>
+                    <span>duplicate_ratio: ${Number(source.duplicate_ratio || 0).toFixed(2)}</span>
+                    <span>avg relevance: ${source.avg_relevance == null ? '-' : Number(source.avg_relevance).toFixed(2)}</span>
+                    <span>avg quality: ${source.avg_quality == null ? '-' : Number(source.avg_quality).toFixed(2)}</span>
+                </div>
+                <p>latest_success: ${escapeHtml(source.latest_success || '-')}</p>
+            </div>
+        `;
+    }).join('');
+}
+
+document.getElementById('recordBtn').addEventListener('click', recordEvent);
+document.getElementById('summaryBtn').addEventListener('click', loadSummary);
+</script>
+</body>
+</html>
