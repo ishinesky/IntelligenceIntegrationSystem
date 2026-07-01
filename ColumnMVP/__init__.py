@@ -8,6 +8,7 @@ executed dynamically.
 from .models import ColumnConfig, SourceConfig, TopicBrief, ValidationResult
 from .column_store import ColumnStore
 from .column_service import ColumnService
+from .editorial_generation import EditorialGenerationService, OpenAICompatibleChatClient
 from .editorial_review import EditorialReviewRecord, EditorialReviewService, EditorialReviewStore
 from .runtime_hooks import configure_context_for_runtime_metrics, record_runtime_metric
 from .source_candidate_service import SourceCandidateService
@@ -23,6 +24,8 @@ __all__ = [
     "ValidationResult",
     "ColumnStore",
     "ColumnService",
+    "EditorialGenerationService",
+    "OpenAICompatibleChatClient",
     "EditorialReviewRecord",
     "EditorialReviewService",
     "EditorialReviewStore",

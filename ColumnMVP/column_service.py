@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from .column_store import ColumnStore
 from .dynamic_crawler_config import build_crawler_config
+from .editorial_generation import EditorialGenerationService
 from .editorial_review import EditorialReviewService
 from .models import ColumnConfig, SourceConfig, TopicBrief
 from .source_candidate_service import SourceCandidateService
@@ -40,12 +41,14 @@ class ColumnService:
         quality_service: Optional[SourceQualityService] = None,
         runtime_metric_service: Optional[SourceRuntimeMetricService] = None,
         editorial_service: Optional[EditorialReviewService] = None,
+        editorial_generation_service: Optional[EditorialGenerationService] = None,
     ):
         self.store = store or ColumnStore()
         self.candidate_service = candidate_service or SourceCandidateService()
         self.quality_service = quality_service or SourceQualityService()
         self.runtime_metric_service = runtime_metric_service or SourceRuntimeMetricService()
         self.editorial_service = editorial_service or EditorialReviewService()
+        self.editorial_generation_service = editorial_generation_service or EditorialGenerationService(self.editorial_service)
 
     # ------------------------------ topic / creation ------------------------------
 
@@ -232,6 +235,9 @@ class ColumnService:
 
     def get_editorial_review(self, review_id: str) -> Dict[str, Any]:
         return self.editorial_service.get_review(review_id)
+
+    def generate_editorial_review(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self.editorial_generation_service.generate(payload)
 
     # ------------------------------ crawl preview ------------------------------
 
