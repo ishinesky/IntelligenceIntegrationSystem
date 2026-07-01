@@ -6,6 +6,7 @@ executed dynamically.
 """
 
 from .models import ColumnConfig, SourceConfig, TopicBrief, ValidationResult
+from .article_lookup import ArticleLookupService, LocalJsonlArticleLookup, RemoteIntelligenceHubArticleLookup
 from .column_store import ColumnStore
 from .column_service import ColumnService
 from .editorial_generation import EditorialGenerationService, OpenAICompatibleChatClient
@@ -22,6 +23,9 @@ __all__ = [
     "SourceConfig",
     "TopicBrief",
     "ValidationResult",
+    "ArticleLookupService",
+    "LocalJsonlArticleLookup",
+    "RemoteIntelligenceHubArticleLookup",
     "ColumnStore",
     "ColumnService",
     "EditorialGenerationService",
