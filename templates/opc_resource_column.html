@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>OPC Column</title>
+  <style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f6f7f9;color:#172033}header,main{padding:24px 36px}header{background:#fff;border-bottom:1px solid #d9dee7}.card{background:#fff;border:1px solid #d9dee7;border-radius:12px;padding:14px;margin:12px 0}a{color:#1f5eff;text-decoration:none}.meta{display:flex;gap:8px;flex-wrap:wrap;color:#667085;font-size:12px}.badge{padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3538cd}</style>
+</head>
+<body>
+<header><h1 id="title">栏目</h1><p id="desc"></p><p><a href="/opc-resource">← 返回门户</a> · <a id="rss" href="#">RSS</a></p></header>
+<main><section id="feed">加载中...</section></main>
+<script>
+const columnId={{ column_id|tojson }}; const API='/api/opc-resource';
+function esc(v){return String(v||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');}
+async function getJson(url){const r=await fetch(url,{credentials:'same-origin'});const d=await r.json();if(!r.ok||!d.success)throw new Error(d.error||r.statusText);return d.data;}
+async function load(){const data=await getJson(`${API}/columns/${encodeURIComponent(columnId)}`);document.getElementById('title').textContent=data.column.name;document.getElementById('desc').textContent=data.column.description||'';document.getElementById('rss').href=`${API}/rss.xml?column_id=${encodeURIComponent(columnId)}`;document.getElementById('feed').innerHTML=(data.feed.items||[]).map(item=>`<article class="card"><h2><a href="/opc-resource/reviews/${encodeURIComponent(item.review_id)}">${esc(item.title)}</a></h2><div class="meta"><span class="badge">质量 ${item.quality_score}</span><span class="badge">行动 ${item.actionability_score}</span><span>${esc(item.created_at)}</span></div><p><strong>事实：</strong>${esc(item.summary)}</p><p><strong>机会：</strong>${esc(item.opportunity)}</p><p><strong>风险：</strong>${esc(item.risk)}</p><p><strong>行动建议：</strong>${esc(item.action_suggestion)}</p></article>`).join('')||'<p>该栏目暂无 reviewed/published 点评。</p>';}
+load().catch(e=>{document.getElementById('feed').textContent=e.message;});
+</script>
+</body>
+</html>
