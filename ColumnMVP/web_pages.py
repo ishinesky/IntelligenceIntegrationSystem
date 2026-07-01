@@ -47,6 +47,11 @@ def create_column_admin_blueprint(
     def opc_editorial_generation():
         return render_template("opc_editorial_generation.html")
 
+    @bp.get("/opc-columns/article-lookup")
+    @secure
+    def opc_article_lookup():
+        return render_template("opc_article_lookup.html")
+
     return bp
 
 
