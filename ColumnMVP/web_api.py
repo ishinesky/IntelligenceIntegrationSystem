@@ -125,6 +125,20 @@ def create_column_blueprint(
             traceback.print_exc()
             return _json_error(str(exc), 500)
 
+    @bp.post("/editorial-reviews/generate")
+    @secure
+    def generate_editorial_review():
+        try:
+            payload = request.get_json(force=True) or {}
+            return jsonify({"success": True, "data": column_service.generate_editorial_review(payload)})
+        except ValueError as exc:
+            return _json_error(str(exc), 400)
+        except RuntimeError as exc:
+            return _json_error(str(exc), 503)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
     @bp.get("/editorial-reviews/<review_id>")
     @secure
     def get_editorial_review(review_id: str):
