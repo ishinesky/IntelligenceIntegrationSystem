@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
+from .article_lookup import ArticleLookupService
 from .column_store import ColumnStore
 from .dynamic_crawler_config import build_crawler_config
 from .editorial_generation import EditorialGenerationService
@@ -42,6 +43,7 @@ class ColumnService:
         runtime_metric_service: Optional[SourceRuntimeMetricService] = None,
         editorial_service: Optional[EditorialReviewService] = None,
         editorial_generation_service: Optional[EditorialGenerationService] = None,
+        article_lookup_service: Optional[ArticleLookupService] = None,
     ):
         self.store = store or ColumnStore()
         self.candidate_service = candidate_service or SourceCandidateService()
@@ -49,6 +51,7 @@ class ColumnService:
         self.runtime_metric_service = runtime_metric_service or SourceRuntimeMetricService()
         self.editorial_service = editorial_service or EditorialReviewService()
         self.editorial_generation_service = editorial_generation_service or EditorialGenerationService(self.editorial_service)
+        self.article_lookup_service = article_lookup_service or ArticleLookupService()
 
     # ------------------------------ topic / creation ------------------------------
 
@@ -238,6 +241,19 @@ class ColumnService:
 
     def generate_editorial_review(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         return self.editorial_generation_service.generate(payload)
+
+    # ------------------------------ article lookup ------------------------------
+
+    def lookup_article(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self.article_lookup_service.resolve(payload)
+
+    def import_article(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        article = payload.get("article") if isinstance(payload.get("article"), dict) else payload
+        return self.article_lookup_service.import_article(article)
+
+    def generate_editorial_review_from_article(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        generation_payload = self.article_lookup_service.build_generation_payload(payload)
+        return self.generate_editorial_review(generation_payload)
 
     # ------------------------------ crawl preview ------------------------------
 

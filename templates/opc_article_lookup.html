@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OPC Article Lookup</title>
+    <style>
+        :root { --bg:#f6f7f9; --panel:#fff; --border:#d9dee7; --text:#172033; --muted:#667085; --primary:#1f5eff; --danger:#b42318; --code:#101828; }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+        header { padding:24px 32px 16px; background:var(--panel); border-bottom:1px solid var(--border); }
+        main { padding:20px 32px 32px; display:grid; grid-template-columns:minmax(340px,480px) 1fr; gap:20px; }
+        section { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:18px; min-width:0; }
+        h1 { margin:0 0 8px; font-size:24px; }
+        h2 { margin:0 0 16px; font-size:18px; }
+        p { margin:0; color:var(--muted); line-height:1.6; }
+        label { display:block; font-size:13px; font-weight:600; margin:12px 0 6px; }
+        input, textarea, select { width:100%; border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:14px; background:#fff; }
+        textarea { min-height:130px; resize:vertical; }
+        button { border:0; border-radius:8px; background:var(--primary); color:#fff; cursor:pointer; padding:9px 12px; font-size:14px; font-weight:600; }
+        button.secondary { background:#344054; }
+        .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+        .status { margin-top:12px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); color:var(--muted); background:#fbfcfe; white-space:pre-wrap; font-size:13px; }
+        pre { overflow:auto; max-height:660px; padding:12px; border-radius:8px; background:var(--code); color:#f2f4f7; font-size:12px; line-height:1.5; }
+        @media (max-width:1000px) { header, main { padding-left:16px; padding-right:16px; } main { grid-template-columns:1fr; } .row { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+<header>
+    <h1>OPC 文章库联动</h1>
+    <p>通过文章 UUID / URL 查找已抓取文章，可导入本地镜像，并直接生成 OPC AI 点评。</p>
+</header>
+<main>
+    <section>
+        <h2>查找 / 生成</h2>
+        <div class="row">
+            <div><label for="columnId">栏目 ID</label><input id="columnId" placeholder="jinan-opc-example"></div>
+            <div><label for="articleUuid">文章 UUID</label><input id="articleUuid" placeholder="article UUID"></div>
+        </div>
+        <label for="sourceUrl">Source URL</label>
+        <input id="sourceUrl" placeholder="https://example.com/article">
+        <div class="row">
+            <div><label for="persist">生成后落库</label><select id="persist"><option value="true">true</option><option value="false">false</option></select></div>
+            <div><label for="dryRun">Dry Run</label><select id="dryRun"><option value="true">true</option><option value="false">false</option></select></div>
+        </div>
+        <div class="actions">
+            <button id="lookupBtn" class="secondary">查找文章</button>
+            <button id="generateBtn">查找并生成点评</button>
+        </div>
+        <div id="status" class="status">等待操作。</div>
+
+        <h2 style="margin-top:20px;">导入本地文章镜像</h2>
+        <p>粘贴单篇文章 JSON。后续可通过 UUID / URL 从本地 JSONL 镜像查找。</p>
+        <label for="importJson">Article JSON</label>
+        <textarea id="importJson" placeholder='{"UUID":"...","title":"...","content":"...","informant":"https://..."}'></textarea>
+        <div class="actions"><button id="importBtn" class="secondary">导入文章</button></div>
+    </section>
+    <section>
+        <h2>结果</h2>
+        <pre id="output">{}</pre>
+    </section>
+</main>
+<script>
+const API = '/api/opc-columns';
+function basePayload(){
+    return {
+        column_id: document.getElementById('columnId').value.trim(),
+        article_uuid: document.getElementById('articleUuid').value.trim(),
+        source_url: document.getElementById('sourceUrl').value.trim(),
+        persist: document.getElementById('persist').value === 'true',
+        dry_run: document.getElementById('dryRun').value === 'true'
+    };
+}
+async function apiFetch(url, options={}){
+    const response = await fetch(url, { credentials:'same-origin', headers:{'Content-Type':'application/json', ...(options.headers||{})}, ...options });
+    const text = await response.text();
+    let data; try { data = text ? JSON.parse(text) : {}; } catch { data={raw:text}; }
+    if(!response.ok) throw new Error(data.error || data.message || response.statusText || 'Request failed');
+    return data;
+}
+function show(data){ document.getElementById('output').textContent = JSON.stringify(data, null, 2); }
+async function lookup(){
+    const p = basePayload();
+    const params = new URLSearchParams();
+    if(p.article_uuid) params.set('article_uuid', p.article_uuid);
+    if(p.source_url) params.set('source_url', p.source_url);
+    document.getElementById('status').textContent = '查找中...';
+    try { const result = await apiFetch(`${API}/articles/lookup?${params.toString()}`); document.getElementById('status').textContent = '查找完成。'; show(result.data); }
+    catch(err){ document.getElementById('status').textContent = err.message; }
+}
+async function generate(){
+    const p = basePayload();
+    document.getElementById('status').textContent = p.dry_run ? '查找并 dry-run...' : '查找并生成点评...';
+    try { const result = await apiFetch(`${API}/editorial-reviews/generate-from-article`, { method:'POST', body:JSON.stringify(p) }); document.getElementById('status').textContent = '完成。'; show(result.data); }
+    catch(err){ document.getElementById('status').textContent = err.message; }
+}
+async function importArticle(){
+    document.getElementById('status').textContent = '导入中...';
+    try { const article = JSON.parse(document.getElementById('importJson').value); const result = await apiFetch(`${API}/articles/import`, { method:'POST', body:JSON.stringify({article}) }); document.getElementById('status').textContent = '导入完成。'; show(result.data); }
+    catch(err){ document.getElementById('status').textContent = err.message; }
+}
+document.getElementById('lookupBtn').addEventListener('click', lookup);
+document.getElementById('generateBtn').addEventListener('click', generate);
+document.getElementById('importBtn').addEventListener('click', importArticle);
+</script>
+</body>
+</html>
