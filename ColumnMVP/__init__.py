@@ -8,6 +8,7 @@ executed dynamically.
 from .models import ColumnConfig, SourceConfig, TopicBrief, ValidationResult
 from .column_store import ColumnStore
 from .column_service import ColumnService
+from .runtime_hooks import configure_context_for_runtime_metrics, record_runtime_metric
 from .source_candidate_service import SourceCandidateService
 from .source_quality import SourceQualityReport, SourceQualityService
 from .source_runtime_metrics import SourceRuntimeMetricRecord, SourceRuntimeMetricService, SourceRuntimeMetricStore
@@ -21,6 +22,8 @@ __all__ = [
     "ValidationResult",
     "ColumnStore",
     "ColumnService",
+    "configure_context_for_runtime_metrics",
+    "record_runtime_metric",
     "SourceCandidateService",
     "SourceQualityReport",
     "SourceQualityService",
