@@ -92,24 +92,33 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - JSON feed API and RSS feed export.
 - CLI for columns/feed/review/RSS inspection.
 
-## Next: Publishing workflow and public hardening
+### PR #13: Publishing workflow and public hardening
+
+- Explicit publish / unpublish / reject workflow.
+- Append-only review status updates.
+- Publication audit log.
+- Publishing API and CLI.
+- Publishing admin page.
+- Public portal and RSS default to `published` only.
+
+## Next: Role-based publishing controls
 
 Target flow:
 
 ```text
-draft/reviewed editorial review
-  -> explicit approve/publish action
-  -> public feed and RSS
-  -> audit log and optional role checks
+editor/reviewer/admin roles
+  -> draft/reviewed/published/rejected permissions
+  -> audit logs with operator identity
+  -> protected publishing actions
 ```
 
 Recommended implementation:
 
 ```text
-EditorialReviewService status mutation
-/api/opc-columns/editorial-reviews/<id>/publish
-public feed default status=published
-publication audit log
+Publishing role policy
+session/user role lookup
+publish/unpublish permission guard
+public anonymous route option
 ```
 
 ## Later: Public OPC resource frontend
