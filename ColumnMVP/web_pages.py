@@ -52,6 +52,11 @@ def create_column_admin_blueprint(
     def opc_article_lookup():
         return render_template("opc_article_lookup.html")
 
+    @bp.get("/opc-columns/publishing")
+    @secure
+    def opc_publishing():
+        return render_template("opc_publishing.html")
+
     @bp.get("/opc-resource")
     @secure
     def opc_resource_home():
