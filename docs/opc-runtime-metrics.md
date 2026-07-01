@@ -40,6 +40,28 @@ duplicate
 skipped
 ```
 
+## Automatic crawler hooks
+
+Dynamic column crawlers now emit runtime metrics automatically.
+
+The hook only activates for flow names matching:
+
+```text
+dynamic_columns/<column_id>
+```
+
+Existing fixed crawler tasks are ignored.
+
+Currently recorded automatically:
+
+```text
+successful collected-data submission -> article event with article_count=1
+commit/submission error              -> crawl_failure
+ProcessSkip / ProcessIgnore          -> skipped
+fetch_error / unexpected exception   -> crawl_failure
+pipeline exception handler error     -> crawl_failure
+```
+
 ## API
 
 ### Record one event
@@ -142,21 +164,26 @@ disable
 
 This layer does not automatically mutate sources. It only records and summarizes runtime observations. Operators still decide whether to promote, keep, review, or disable a source.
 
+Metric recording is best-effort. If recording fails, crawling continues.
+
 ## Next integration
 
-Connect real crawler events into `SourceRuntimeMetricService.record_event`:
-
-```text
-CommonIntelligenceCrawlFlow / CrawlContext
-  -> source URL / group path
-  -> success/failure/article counts
-  -> SourceRuntimeMetricService.record_event
-```
-
-A later adapter can also read from:
+A later adapter can add deeper runtime signals from:
 
 ```text
 DATA_PATH/spider_governance.db
+IntelligenceCrawler.CrawlPipeline internals
 Mongo article archives
 AI analysis scores
+```
+
+Potential future metrics:
+
+```text
+discovered count
+fetched count
+extracted count
+batch elapsed time
+per-source duplicate rate
+topic relevance from analyzed articles
 ```
