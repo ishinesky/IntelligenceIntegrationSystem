@@ -69,24 +69,31 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - Browser page for creating and reviewing AI editorial output.
 - Facts, analysis, AI opinion, and action suggestions stay separated.
 
-## Next: AI generation integration
+### PR #10: Editorial generation
+
+- Editorial generation service.
+- OpenAI-compatible chat adapter.
+- Dry-run mode for prompt/article inspection.
+- API endpoint for generating editorial reviews.
+- CLI for generating and optionally persisting reviews.
+
+## Next: Article-store integration
 
 Target flow:
 
 ```text
-Collected / processed article
-  -> existing AI analysis
-  -> OPC editorial prompt
-  -> editorial review JSON
+Collected article UUID
+  -> fetch article from IntelligenceHub / local store
+  -> generate OPC editorial review
   -> review store
-  -> internal review / public display
+  -> article detail editorial block
 ```
 
 Recommended implementation:
 
 ```text
-ColumnMVP/editorial_generation.py
-ServiceComponent integration with AIClientCenter
+ColumnMVP/article_lookup.py
+/api/opc-columns/articles/<uuid>/generate-editorial-review
 Article detail page editorial block
 ```
 
