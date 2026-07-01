@@ -15,6 +15,11 @@ from IntelligenceHubWebService import post_collected_intelligence
 from Tools.ProcessCotrolException import ProcessSkip, ProcessProblem, ProcessIgnore
 from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager, CrawlSession
 
+try:
+    from ColumnMVP.runtime_hooks import record_runtime_metric as _record_runtime_metric
+except Exception:
+    _record_runtime_metric = None
+
 DEFAULT_CRAWL_ERROR_THRESHOLD = 3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -61,7 +66,6 @@ class CrawlCache:
 
 
 # ------------------------------------------------------------------------------------------------------------------
-
 class PrefixLogger:
     def __init__(self, logger: Logger, prefix):
         self.logger = logger
@@ -84,7 +88,6 @@ class PrefixLogger:
 
 
 # ------------------------------------------------------------------------------------------------------------------
-
 class CrawlContext:
     def __init__(self,
                  flow_name: str,
@@ -105,11 +108,43 @@ class CrawlContext:
         self.crawl_cache = CrawlCache()
         self._submit_collected_data = post_collected_intelligence
 
+        # Optional dynamic-column runtime metrics fields. They are populated by
+        # ColumnMVP.runtime_hooks.configure_context_for_runtime_metrics().
+        self.runtime_metrics_column_id = None
+        self.runtime_metrics_source_map = {}
+
     def is_url_in_cache(self, url: str):
         return self.crawl_cache.is_in_cache(url)
 
     def check_get_cached_data(self, url: str)-> CollectedData:
         return self.crawl_cache.pop_content(url)
+
+    def record_runtime_metric(
+            self,
+            *,
+            group: str,
+            source_url: str = '',
+            event_type: str,
+            article_count: int = 0,
+            duplicate_count: int = 0,
+            message: str = '',
+            metadata: Optional[Dict[str, Any]] = None
+    ):
+        if not _record_runtime_metric:
+            return
+        try:
+            _record_runtime_metric(
+                self,
+                group=group,
+                source_url=source_url,
+                event_type=event_type,
+                article_count=article_count,
+                duplicate_count=duplicate_count,
+                message=message,
+                metadata=metadata or {},
+            )
+        except Exception as e:
+            self.logger.warning(f'Runtime metric record failed: {e}')
 
     def submit_collected_data(
             self,
@@ -129,10 +164,28 @@ class CrawlContext:
                     self.crawl_cache.cache_content(
                         collected_data.informant, (collected_data, group)   # <- Cached data is packed here.
                     )
+                self.record_runtime_metric(
+                    group=group,
+                    source_url=collected_data.informant,
+                    event_type='crawl_failure',
+                    message='commit_error',
+                    metadata={'uuid': getattr(collected_data, 'UUID', '')}
+                )
                 raise CrawlSession.Cached('commit_error')
         else:
             self.logger.warning(f'no method to submit collected data, data dropped.')
 
+        self.record_runtime_metric(
+            group=group,
+            source_url=collected_data.informant,
+            event_type='article',
+            article_count=1,
+            message='collected data submitted',
+            metadata={
+                'uuid': getattr(collected_data, 'UUID', ''),
+                'title': getattr(collected_data, 'title', ''),
+            }
+        )
         self.logger.debug(f'Article finished.')
 
     def submit_cached_data(self, limit: int = -1):
@@ -156,25 +209,64 @@ class CrawlContext:
             self.logger.info(f"Process cached data for {self.flow_name}, count: {count}.")
 
     def handle_process_exception(self, task: CrawlSession, e: Exception):
+        group_path = getattr(task, 'group_path', '')
+        task_url = getattr(task, 'url', '') or getattr(task, 'target', '') or ''
+
         if isinstance(e, ProcessSkip):
             task.skip(e.reason)
+            self.record_runtime_metric(
+                group=group_path,
+                source_url=task_url,
+                event_type='skipped',
+                message=f'skip: {e.reason}',
+            )
             self.logger.debug('Article skipped.')
 
         elif isinstance(e, ProcessIgnore):
             task.ignore()
+            self.record_runtime_metric(
+                group=group_path,
+                source_url=task_url,
+                event_type='skipped',
+                message='ignored',
+            )
             self.logger.debug('Article ignored.')
 
         elif isinstance(e, ProcessProblem):
             if e.problem == 'fetch_error':
                 task.fail_temp(state_msg='Fetch error')
+                self.record_runtime_metric(
+                    group=group_path,
+                    source_url=task_url,
+                    event_type='crawl_failure',
+                    message='fetch_error',
+                )
             elif e.problem in ['commit_error']:
                 # Just ignore because there will be a retry at next loop.
                 task.cached()
+                self.record_runtime_metric(
+                    group=group_path,
+                    source_url=task_url,
+                    event_type='crawl_failure',
+                    message='commit_error_cached',
+                )
             else:
                 task.fail_perm(state_msg=f"Task {task.group_path} got unexpected ProcessProblem reason: {e.problem}")
+                self.record_runtime_metric(
+                    group=group_path,
+                    source_url=task_url,
+                    event_type='crawl_failure',
+                    message=f'process_problem: {e.problem}',
+                )
 
         else:
             task.fail_perm(state_msg=str(e))
+            self.record_runtime_metric(
+                group=group_path,
+                source_url=task_url,
+                event_type='crawl_failure',
+                message=str(e),
+            )
             self.logger.error(f"Task {task.group_path} got unexpected exception: {str(e)}")
             print(format_exception_with_traceback(e))
 
