@@ -11,6 +11,7 @@ from .column_store import ColumnStore
 from .column_service import ColumnService
 from .editorial_generation import EditorialGenerationService, OpenAICompatibleChatClient
 from .editorial_review import EditorialReviewRecord, EditorialReviewService, EditorialReviewStore
+from .public_portal import OPCPublicPortalService
 from .runtime_hooks import configure_context_for_runtime_metrics, record_runtime_metric
 from .source_candidate_service import SourceCandidateService
 from .source_quality import SourceQualityReport, SourceQualityService
@@ -33,6 +34,7 @@ __all__ = [
     "EditorialReviewRecord",
     "EditorialReviewService",
     "EditorialReviewStore",
+    "OPCPublicPortalService",
     "configure_context_for_runtime_metrics",
     "record_runtime_metric",
     "SourceCandidateService",

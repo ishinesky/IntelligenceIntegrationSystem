@@ -84,23 +84,32 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - CLI for lookup/import/generate workflows.
 - Browser page for article lookup and editorial generation.
 
-## Next: Article detail editorial block
+### PR #12: OPC resource portal
+
+- Portal read model over columns and editorial reviews.
+- Internal/semipublic resource portal pages.
+- Column landing pages and review detail pages.
+- JSON feed API and RSS feed export.
+- CLI for columns/feed/review/RSS inspection.
+
+## Next: Publishing workflow and public hardening
 
 Target flow:
 
 ```text
-Article detail page
-  -> fetch article by UUID
-  -> fetch related editorial review
-  -> render fact summary / AI view / action suggestion block
+draft/reviewed editorial review
+  -> explicit approve/publish action
+  -> public feed and RSS
+  -> audit log and optional role checks
 ```
 
 Recommended implementation:
 
 ```text
-IntelligenceHubWebService.py article detail route extension
-ServiceComponent render helper
-Template block for editorial review
+EditorialReviewService status mutation
+/api/opc-columns/editorial-reviews/<id>/publish
+public feed default status=published
+publication audit log
 ```
 
 ## Later: Public OPC resource frontend

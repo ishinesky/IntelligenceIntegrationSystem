@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .public_api import register_opc_resource_api
 from .web_api import register_column_routes
 from .web_pages import register_column_admin_pages
 
@@ -10,26 +11,20 @@ logger = logging.getLogger(__name__)
 
 
 def register_opc_column_routes(app: Any, login_required=None):
-    """Register OPC column API and admin pages on an existing Flask app.
+    """Register OPC column APIs and pages on an existing Flask app.
 
     This helper keeps the integration line small inside the large
     `IntelligenceHubWebService.register_routers` method.
-
-    Example:
-
-        from ColumnMVP.web_service_integration import register_opc_column_routes
-        register_opc_column_routes(app, WebServiceAccessManager.login_required)
-
-    Args:
-        app: Existing Flask app instance.
-        login_required: Optional route decorator. In IIS, pass
-            `WebServiceAccessManager.login_required` so the column management
-            API and page stay private.
     """
     api_blueprint = register_column_routes(
         app,
         login_required=login_required,
         url_prefix="/api/opc-columns",
+    )
+    resource_api_blueprint = register_opc_resource_api(
+        app,
+        login_required=login_required,
+        url_prefix="/api/opc-resource",
     )
     page_blueprint = register_column_admin_pages(
         app,
@@ -37,9 +32,11 @@ def register_opc_column_routes(app: Any, login_required=None):
         url_prefix="",
     )
     logger.info("OPC column API registered at /api/opc-columns")
-    logger.info("OPC column admin page registered at /opc-columns/admin")
+    logger.info("OPC resource API registered at /api/opc-resource")
+    logger.info("OPC pages registered at /opc-columns/admin and /opc-resource")
     return {
         "api": api_blueprint,
+        "resource_api": resource_api_blueprint,
         "pages": page_blueprint,
     }
 

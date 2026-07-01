@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPC Resource Portal</title>
+  <style>
+    :root { --bg:#f6f7f9; --panel:#fff; --border:#d9dee7; --text:#172033; --muted:#667085; --primary:#1f5eff; --good:#027a48; --warn:#b54708; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:28px 36px 18px; background:linear-gradient(135deg,#ffffff,#eef3ff); border-bottom:1px solid var(--border); }
+    main { padding:22px 36px 40px; display:grid; grid-template-columns:320px 1fr; gap:20px; }
+    section { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:18px; min-width:0; }
+    h1 { margin:0 0 8px; font-size:28px; }
+    h2 { margin:0 0 14px; font-size:18px; }
+    h3 { margin:0 0 8px; font-size:17px; }
+    p { margin:0; color:var(--muted); line-height:1.65; }
+    input, select { width:100%; border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin:8px 0 12px; font-size:14px; }
+    button { border:0; border-radius:10px; background:var(--primary); color:#fff; padding:10px 14px; font-weight:700; cursor:pointer; }
+    a { color:var(--primary); text-decoration:none; }
+    .card { border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; background:#fff; }
+    .meta { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; color:var(--muted); font-size:12px; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; background:#eef2ff; color:#3538cd; font-size:12px; }
+    .score { background:#ecfdf3; color:var(--good); }
+    .warn { background:#fffaeb; color:var(--warn); }
+    .toolbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:14px; }
+    .toolbar a { border:1px solid var(--border); background:#fff; border-radius:10px; padding:9px 12px; }
+    @media (max-width: 900px) { header, main { padding-left:16px; padding-right:16px; } main { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>OPC 资源门户</h1>
+  <p>面向一人公司、AI 原生创业者和小团队的精选资讯入口。每条内容把事实、机会、风险、行动建议和 AI 编辑观点分开展示。</p>
+  <div class="toolbar">
+    <a href="/api/opc-resource/rss.xml">RSS Feed</a>
+    <a href="/opc-columns/admin">栏目后台</a>
+    <a href="/opc-columns/editorial-reviews">点评后台</a>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>筛选</h2>
+    <label>关键词</label>
+    <input id="keyword" placeholder="算力券 / OPC / 一人公司">
+    <label>栏目</label>
+    <select id="columnFilter"><option value="">全部栏目</option></select>
+    <label>最低内容质量分</label>
+    <input id="minQuality" type="number" min="0" max="10" step="0.5" value="0">
+    <label>最低可行动性分</label>
+    <input id="minAction" type="number" min="0" max="10" step="0.5" value="0">
+    <button id="searchBtn">刷新 Feed</button>
+    <div id="columns" style="margin-top:18px"></div>
+  </section>
+  <section>
+    <h2>精选 Feed</h2>
+    <div id="feed"><p>加载中...</p></div>
+  </section>
+</main>
+<script>
+const API = '/api/opc-resource';
+function esc(v){ return String(v||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
+async function getJson(url){ const r=await fetch(url,{credentials:'same-origin'}); const d=await r.json(); if(!r.ok||!d.success) throw new Error(d.error||r.statusText); return d.data; }
+async function loadColumns(){
+  const data = await getJson(`${API}/columns`);
+  const select = document.getElementById('columnFilter');
+  select.innerHTML = '<option value="">全部栏目</option>' + data.columns.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  document.getElementById('columns').innerHTML = data.columns.map(c=>`<div class="card"><h3><a href="/opc-resource/columns/${encodeURIComponent(c.id)}">${esc(c.name)}</a></h3><p>${esc(c.description)}</p><div class="meta"><span class="badge">${esc(c.id)}</span><span>${c.source_count} sources</span><span>${c.review_count} reviews</span></div></div>`).join('') || '<p>暂无栏目。</p>';
+}
+async function loadFeed(){
+  const params = new URLSearchParams();
+  const columnId = document.getElementById('columnFilter').value;
+  const keyword = document.getElementById('keyword').value.trim();
+  if(columnId) params.set('column_id', columnId);
+  if(keyword) params.set('keyword', keyword);
+  params.set('min_quality', document.getElementById('minQuality').value || '0');
+  params.set('min_actionability', document.getElementById('minAction').value || '0');
+  params.set('limit','80');
+  const data = await getJson(`${API}/feed?${params.toString()}`);
+  document.getElementById('feed').innerHTML = data.items.map(item=>`<article class="card"><h3><a href="/opc-resource/reviews/${encodeURIComponent(item.review_id)}">${esc(item.title)}</a></h3><div class="meta"><span class="badge score">质量 ${item.quality_score}</span><span class="badge score">行动 ${item.actionability_score}</span><span class="badge warn">${esc(item.source_reliability||'-')}</span><span>${esc(item.created_at)}</span></div><p><strong>事实：</strong>${esc(item.summary)}</p><p><strong>为什么重要：</strong>${esc(item.why_it_matters)}</p><p><strong>行动建议：</strong>${esc(item.action_suggestion)}</p><p><strong>AI观点：</strong>${esc(item.editorial_view)}</p></article>`).join('') || '<p>暂无内容。先在 AI 点评后台创建 reviewed/published 记录。</p>';
+}
+document.getElementById('searchBtn').addEventListener('click', loadFeed);
+loadColumns().then(loadFeed).catch(e=>{document.getElementById('feed').innerHTML='<p>'+esc(e.message)+'</p>';});
+</script>
+</body>
+</html>
