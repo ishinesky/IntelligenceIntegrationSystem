@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>OPC Review</title>
+  <style>body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f6f7f9;color:#172033}header,main{padding:24px 36px}header{background:#fff;border-bottom:1px solid #d9dee7}.grid{display:grid;grid-template-columns:1fr 320px;gap:18px}.card{background:#fff;border:1px solid #d9dee7;border-radius:12px;padding:16px;margin-bottom:14px}a{color:#1f5eff;text-decoration:none}.muted{color:#667085}.badge{display:inline-block;padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3538cd;margin-right:6px}@media(max-width:900px){.grid{grid-template-columns:1fr}header,main{padding-left:16px;padding-right:16px}}</style>
+</head>
+<body>
+<header><p><a href="/opc-resource">← 返回门户</a></p><h1 id="title">加载中...</h1><p id="meta" class="muted"></p></header>
+<main class="grid"><section id="content"></section><aside id="side"></aside></main>
+<script>
+const reviewId={{ review_id|tojson }}; const API='/api/opc-resource';
+function esc(v){return String(v||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');}
+async function getJson(url){const r=await fetch(url,{credentials:'same-origin'});const d=await r.json();if(!r.ok||!d.success)throw new Error(d.error||r.statusText);return d.data;}
+async function load(){const item=await getJson(`${API}/reviews/${encodeURIComponent(reviewId)}`);const r=item.review||{};document.getElementById('title').textContent=item.title;document.getElementById('meta').innerHTML=`Column: <a href="/opc-resource/columns/${encodeURIComponent(item.column_id)}">${esc(item.column_id||'-')}</a> · ${esc(item.created_at)} · <a href="${esc(item.source_url)}" target="_blank" rel="noreferrer">原文</a>`;document.getElementById('content').innerHTML=`<div class="card"><h2>事实摘要</h2><p>${esc(r.FACT_SUMMARY)}</p></div><div class="card"><h2>为什么重要</h2><p>${esc(r.WHY_IT_MATTERS)}</p></div><div class="card"><h2>机会</h2><p>${esc(r.OPPORTUNITY)}</p></div><div class="card"><h2>风险</h2><p>${esc(r.RISK)}</p></div><div class="card"><h2>行动建议</h2><p>${esc(r.ACTION_SUGGESTION)}</p></div><div class="card"><h2>AI 编辑观点</h2><p>${esc(r.EDITORIAL_VIEW)}</p></div>`;document.getElementById('side').innerHTML=`<div class="card"><h2>评分</h2><p><span class="badge">质量 ${esc(r.CONTENT_QUALITY_SCORE)}</span></p><p><span class="badge">行动 ${esc(r.ACTIONABILITY_SCORE)}</span></p><p><span class="badge">置信 ${esc(r.CONFIDENCE)}</span></p><p><span class="badge">来源 ${esc(r.SOURCE_RELIABILITY)}</span></p></div><div class="card"><h2>谁应关注</h2><p>${(r.WHO_SHOULD_CARE||[]).map(x=>`<span class="badge">${esc(x)}</span>`).join(' ')}</p></div>`;}
+load().catch(e=>{document.getElementById('content').textContent=e.message;});
+</script>
+</body>
+</html>
