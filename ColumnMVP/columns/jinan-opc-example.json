@@ -1,0 +1,42 @@
+{
+  "id": "jinan-opc-example",
+  "name": "济南 OPC 政策与社区动态示例",
+  "description": "跟踪济南及山东范围内与 OPC、一人公司、AI创业社区、算力券、Token券、人才补贴、园区入驻相关的公开信息。",
+  "topic_scope": "跟踪济南及山东范围内与 OPC、一人公司、AI创业社区、算力券、Token券、人才补贴、园区入驻相关的公开信息。\n关注区域：济南、山东\n关键词：OPC、一人公司、中国算谷、算力券、Token券、人才补贴",
+  "keywords": [
+    "OPC",
+    "一人公司",
+    "中国算谷",
+    "算力券",
+    "Token券",
+    "人才补贴"
+  ],
+  "negative_keywords": [
+    "普通招聘",
+    "无关招商广告",
+    "纯房产推广"
+  ],
+  "source_policy": "official_first",
+  "update_frequency": "daily",
+  "publish_style": "fact_summary_ai_analysis_editorial_action",
+  "sources": [
+    {
+      "name": "济南市人民政府",
+      "url": "https://www.jinan.gov.cn/",
+      "source_type": "government",
+      "crawl_method": "list_page",
+      "trust_level": "S",
+      "enabled": true,
+      "validation_status": "manual_review",
+      "validation_notes": [
+        "Example source. Enable the column after confirming list-page quality."
+      ]
+    }
+  ],
+  "enabled": false,
+  "created_at": "2026-07-01T00:00:00+00:00",
+  "updated_at": "2026-07-01T00:00:00+00:00",
+  "metadata": {
+    "example": true
+  }
+}
