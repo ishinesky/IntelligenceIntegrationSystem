@@ -61,38 +61,45 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - Automatic failure/skipped metric recording on process exceptions.
 - Metrics are best-effort and never break crawling.
 
-## Next: Runtime metric accuracy improvements
+### PR #9: Editorial reviews
+
+- Editorial review JSONL store.
+- API endpoint for creating/listing/retrieving editorial reviews.
+- CLI for editorial review management.
+- Browser page for creating and reviewing AI editorial output.
+- Facts, analysis, AI opinion, and action suggestions stay separated.
+
+## Next: AI generation integration
 
 Target flow:
 
 ```text
-CrawlPipeline internals
-  -> discovered count
-  -> fetched count
-  -> extracted count
-  -> duplicate count
-  -> elapsed time
-  -> richer runtime metric events
+Collected / processed article
+  -> existing AI analysis
+  -> OPC editorial prompt
+  -> editorial review JSON
+  -> review store
+  -> internal review / public display
 ```
 
 Recommended implementation:
 
 ```text
-IntelligenceCrawler.CrawlPipeline instrumentation
-CrawlerGovernanceCore runtime adapter
-ColumnMVP/source_runtime_metrics.py enrichment
+ColumnMVP/editorial_generation.py
+ServiceComponent integration with AIClientCenter
+Article detail page editorial block
 ```
 
-## Later: Editorial publishing
+## Later: Public OPC resource frontend
 
 Target flow:
 
 ```text
-Collected article
-  -> existing analysis
-  -> OPC editorial review
-  -> fact / analysis / AI view / action suggestion
-  -> public resource frontend
+Column
+  -> curated articles
+  -> editorial reviews
+  -> public list/detail pages
+  -> RSS / email / API subscription
 ```
 
 Important rule: never mix AI editorial opinion into fact summary.
