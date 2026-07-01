@@ -5,7 +5,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 EDITORIAL_FIELDS = [
@@ -92,6 +92,14 @@ class EditorialReviewStore:
                     continue
         return records
 
+    def latest_records(self) -> List[EditorialReviewRecord]:
+        latest: Dict[str, EditorialReviewRecord] = {}
+        for record in self.iter_records():
+            current = latest.get(record.review_id)
+            if current is None or str(record.created_at) >= str(current.created_at):
+                latest[record.review_id] = record
+        return list(latest.values())
+
     def list_records(
         self,
         *,
@@ -100,13 +108,14 @@ class EditorialReviewStore:
         status: str = "",
         limit: int = 50,
     ) -> List[EditorialReviewRecord]:
-        records = self.iter_records()
+        records = self.latest_records()
         if column_id:
             records = [record for record in records if record.column_id == column_id]
         if article_uuid:
             records = [record for record in records if record.article_uuid == article_uuid]
         if status:
-            records = [record for record in records if record.status == status]
+            allowed = {item.strip() for item in status.split(',') if item.strip()}
+            records = [record for record in records if record.status in allowed]
         records.sort(key=lambda record: record.created_at, reverse=True)
         return records[:max(1, limit)]
 
