@@ -39,6 +39,15 @@ def _rss_date(value: str) -> str:
     return email.utils.format_datetime(dt)
 
 
+def _latest_review_records(records: List[EditorialReviewRecord]) -> List[EditorialReviewRecord]:
+    latest: Dict[str, EditorialReviewRecord] = {}
+    for record in records:
+        current = latest.get(record.review_id)
+        if current is None or str(record.created_at) >= str(current.created_at):
+            latest[record.review_id] = record
+    return list(latest.values())
+
+
 class OPCPublicPortalService:
     """Read-model service for the OPC resource portal.
 
@@ -58,10 +67,10 @@ class OPCPublicPortalService:
 
     def list_columns(self, *, include_disabled: bool = False) -> Dict[str, Any]:
         columns = self.column_store.list_columns(enabled_only=not include_disabled)
-        reviews = self.editorial_service.store.iter_records()
+        reviews = _latest_review_records(self.editorial_service.store.iter_records())
         count_by_column: Dict[str, int] = {}
         for review in reviews:
-            if review.status in {'reviewed', 'published'}:
+            if review.status == 'published':
                 count_by_column[review.column_id] = count_by_column.get(review.column_id, 0) + 1
 
         return {
@@ -73,6 +82,7 @@ class OPCPublicPortalService:
                     'enabled': column.enabled,
                     'keywords': column.keywords,
                     'source_count': len(column.sources),
+                    'published_count': count_by_column.get(column.id, 0),
                     'review_count': count_by_column.get(column.id, 0),
                     'updated_at': column.updated_at,
                 }
@@ -94,13 +104,13 @@ class OPCPublicPortalService:
         *,
         column_id: str = '',
         keyword: str = '',
-        status: str = 'published,reviewed',
+        status: str = 'published',
         min_quality: float = 0,
         min_actionability: float = 0,
         limit: int = 50,
     ) -> Dict[str, Any]:
         allowed_status = {item.strip() for item in status.split(',') if item.strip()}
-        records = self.editorial_service.store.iter_records()
+        records = _latest_review_records(self.editorial_service.store.iter_records())
         cards: List[Dict[str, Any]] = []
         for record in records:
             if allowed_status and record.status not in allowed_status:
@@ -157,7 +167,7 @@ class OPCPublicPortalService:
         limit: int = 30,
         title: str = 'OPC Resource Feed',
     ) -> str:
-        feed = self.list_feed(column_id=column_id, keyword=keyword, status='published,reviewed', limit=limit)
+        feed = self.list_feed(column_id=column_id, keyword=keyword, status='published', limit=limit)
         base_url = (base_url or '').rstrip('/')
         channel_link = f'{base_url}/opc-resource' if base_url else '/opc-resource'
         items_xml = []
