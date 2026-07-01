@@ -37,6 +37,11 @@ def create_column_admin_blueprint(
     def opc_runtime_metrics():
         return render_template("opc_runtime_metrics.html")
 
+    @bp.get("/opc-columns/editorial-reviews")
+    @secure
+    def opc_editorial_reviews():
+        return render_template("opc_editorial_reviews.html")
+
     return bp
 
 
