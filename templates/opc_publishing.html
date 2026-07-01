@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>OPC Publishing</title>
+  <style>
+    :root{--bg:#f6f7f9;--panel:#fff;--border:#d9dee7;--text:#172033;--muted:#667085;--primary:#1f5eff;--danger:#b42318;--good:#027a48;--code:#101828}
+    *{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--text)}header{padding:24px 32px;background:#fff;border-bottom:1px solid var(--border)}main{padding:20px 32px;display:grid;grid-template-columns:420px 1fr;gap:20px}section{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px}h1{margin:0 0 8px}h2{margin:0 0 14px;font-size:18px}p{color:var(--muted);line-height:1.6}label{display:block;font-size:13px;font-weight:700;margin:12px 0 6px}input,textarea,select{width:100%;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px}textarea{min-height:80px}button{border:0;border-radius:8px;background:var(--primary);color:#fff;padding:9px 12px;font-weight:700;cursor:pointer}button.secondary{background:#344054}button.danger{background:var(--danger)}button.good{background:var(--good)}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.card{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}.meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:12px}.badge{padding:3px 8px;border-radius:999px;background:#eef2ff;color:#3538cd}pre{overflow:auto;max-height:620px;background:var(--code);color:#f2f4f7;border-radius:8px;padding:12px;font-size:12px}@media(max-width:900px){main{grid-template-columns:1fr;padding:16px}header{padding:20px 16px}}
+  </style>
+</head>
+<body>
+<header><h1>OPC 发布工作流</h1><p>把 reviewed 内容显式发布为 published。公共门户和 RSS 默认只展示 published 内容。</p></header>
+<main>
+  <section>
+    <h2>操作</h2>
+    <label>Review ID</label><input id="reviewId" placeholder="review id">
+    <label>原因 / 备注</label><textarea id="reason" placeholder="为什么发布、撤回或拒绝"></textarea>
+    <div class="actions">
+      <button class="good" onclick="act('publish')">Publish</button>
+      <button class="secondary" onclick="act('unpublish')">Unpublish</button>
+      <button class="danger" onclick="act('reject')">Reject</button>
+      <button class="secondary" onclick="loadAudit()">查看审计</button>
+    </div>
+    <h2 style="margin-top:24px">最近点评</h2>
+    <label>状态过滤</label><select id="status"><option value="reviewed">reviewed</option><option value="draft">draft</option><option value="published">published</option><option value="rejected">rejected</option><option value="">all</option></select>
+    <div class="actions"><button onclick="loadReviews()">加载</button></div>
+    <div id="reviews"></div>
+  </section>
+  <section>
+    <h2>结果</h2>
+    <pre id="output">{}</pre>
+  </section>
+</main>
+<script>
+const API='/api/opc-columns'; const PUB='/api/opc-publishing';
+function esc(v){return String(v||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;')}
+function show(v){document.getElementById('output').textContent=JSON.stringify(v,null,2)}
+async function req(url,opt={}){const r=await fetch(url,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});const t=await r.text();let d;try{d=t?JSON.parse(t):{}}catch{d={raw:t}}if(!r.ok||d.success===false)throw new Error(d.error||r.statusText);return d.data}
+async function act(name){const id=document.getElementById('reviewId').value.trim();if(!id){alert('review id required');return}try{const data=await req(`${PUB}/reviews/${encodeURIComponent(id)}/${name}`,{method:'POST',body:JSON.stringify({reason:document.getElementById('reason').value})});show(data);await loadReviews();}catch(e){show({error:e.message})}}
+async function loadAudit(){const id=document.getElementById('reviewId').value.trim();try{const data=await req(id?`${PUB}/reviews/${encodeURIComponent(id)}/audit`:`${PUB}/audit`);show(data)}catch(e){show({error:e.message})}}
+async function loadReviews(){const status=document.getElementById('status').value;const p=new URLSearchParams();if(status)p.set('status',status);p.set('limit','30');try{const data=await req(`${API}/editorial-reviews?${p.toString()}`);document.getElementById('reviews').innerHTML=(data.reviews||[]).map(r=>`<div class="card"><h3>${esc(r.title||r.review_id)}</h3><div class="meta"><span class="badge">${esc(r.status)}</span><span>${esc(r.review_id)}</span><span>${esc(r.column_id||'-')}</span></div><p>${esc((r.review||{}).FACT_SUMMARY||'')}</p><div class="actions"><button onclick="document.getElementById('reviewId').value='${esc(r.review_id)}';show(${JSON.stringify('{}')})">选择</button></div></div>`).join('')||'<p>暂无记录。</p>';show(data)}catch(e){show({error:e.message})}}
+loadReviews();
+</script>
+</body>
+</html>
