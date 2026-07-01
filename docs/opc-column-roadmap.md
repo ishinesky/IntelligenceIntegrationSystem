@@ -45,28 +45,33 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - Browser page for reviewing source quality.
 - Initial promote / keep / review / disable recommendations.
 
-## Next: Runtime quality signals
+### PR #7: Runtime quality signals
+
+- JSONL-backed runtime metric store.
+- CLI for recording and summarizing source runtime events.
+- API endpoint for `/source-runtime-metrics`.
+- Browser page for runtime metrics.
+- Runtime score and recommendation based on observed events.
+
+## Next: Runtime integration hooks
 
 Target flow:
 
 ```text
-Column sources
-  -> crawler governance stats
-  -> crawl success rate
-  -> last successful crawl time
-  -> article freshness
-  -> duplicate ratio
-  -> topic relevance
-  -> source quality score
-  -> suggested disable / keep / promote
+CommonIntelligenceCrawlFlow / CrawlContext
+  -> crawl success / failure
+  -> article count
+  -> duplicate count
+  -> source runtime metric events
+  -> source quality loop
 ```
 
 Recommended implementation:
 
 ```text
-ColumnMVP/source_runtime_metrics.py
-ColumnMVP/cli_source_metrics.py
-/api/opc-columns/<column_id>/source-runtime-metrics
+ColumnMVP/runtime_hooks.py
+Workflow/CommonFlowUtility.py integration point
+Workflow/IntelligenceCrawlFlow.py event emission
 ```
 
 ## Later: Editorial publishing
