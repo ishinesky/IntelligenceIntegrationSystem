@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from .public_api import register_opc_resource_api
+from .publishing_api import register_publishing_api
 from .web_api import register_column_routes
 from .web_pages import register_column_admin_pages
 
@@ -26,6 +27,11 @@ def register_opc_column_routes(app: Any, login_required=None):
         login_required=login_required,
         url_prefix="/api/opc-resource",
     )
+    publishing_api_blueprint = register_publishing_api(
+        app,
+        login_required=login_required,
+        url_prefix="/api/opc-publishing",
+    )
     page_blueprint = register_column_admin_pages(
         app,
         login_required=login_required,
@@ -33,10 +39,12 @@ def register_opc_column_routes(app: Any, login_required=None):
     )
     logger.info("OPC column API registered at /api/opc-columns")
     logger.info("OPC resource API registered at /api/opc-resource")
+    logger.info("OPC publishing API registered at /api/opc-publishing")
     logger.info("OPC pages registered at /opc-columns/admin and /opc-resource")
     return {
         "api": api_blueprint,
         "resource_api": resource_api_blueprint,
+        "publishing_api": publishing_api_blueprint,
         "pages": page_blueprint,
     }
 
