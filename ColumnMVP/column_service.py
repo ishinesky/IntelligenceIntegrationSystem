@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from .column_store import ColumnStore
 from .dynamic_crawler_config import build_crawler_config
+from .editorial_review import EditorialReviewService
 from .models import ColumnConfig, SourceConfig, TopicBrief
 from .source_candidate_service import SourceCandidateService
 from .source_discovery import build_search_queries, candidates_from_urls
@@ -38,11 +39,13 @@ class ColumnService:
         candidate_service: Optional[SourceCandidateService] = None,
         quality_service: Optional[SourceQualityService] = None,
         runtime_metric_service: Optional[SourceRuntimeMetricService] = None,
+        editorial_service: Optional[EditorialReviewService] = None,
     ):
         self.store = store or ColumnStore()
         self.candidate_service = candidate_service or SourceCandidateService()
         self.quality_service = quality_service or SourceQualityService()
         self.runtime_metric_service = runtime_metric_service or SourceRuntimeMetricService()
+        self.editorial_service = editorial_service or EditorialReviewService()
 
     # ------------------------------ topic / creation ------------------------------
 
@@ -212,6 +215,23 @@ class ColumnService:
     def get_source_runtime_metrics(self, column_id: str) -> Dict[str, Any]:
         column = self.store.load(column_id)
         return self.runtime_metric_service.summarize_column(column)
+
+    # ------------------------------ editorial reviews ------------------------------
+
+    def create_editorial_review(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self.editorial_service.create_review(payload).to_dict()
+
+    def list_editorial_reviews(self, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        payload = payload or {}
+        return self.editorial_service.list_reviews(
+            column_id=str(payload.get("column_id", "")),
+            article_uuid=str(payload.get("article_uuid", "")),
+            status=str(payload.get("status", "")),
+            limit=int(payload.get("limit", 50)),
+        )
+
+    def get_editorial_review(self, review_id: str) -> Dict[str, Any]:
+        return self.editorial_service.get_review(review_id)
 
     # ------------------------------ crawl preview ------------------------------
 
