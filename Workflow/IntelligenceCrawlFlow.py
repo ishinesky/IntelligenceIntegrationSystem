@@ -19,6 +19,11 @@ from ServiceComponent.IntelligenceHubDefines_v2 import CollectedData
 from Workflow.RssFeedsBasedCrawlFlow import build_crawl_ctx_by_service_ctx
 from IntelligenceCrawler.CrawlPipeline import CrawlPipeline, build_pipeline, drive_pipeline_batch
 
+try:
+    from ColumnMVP.runtime_hooks import configure_context_for_runtime_metrics
+except Exception:
+    configure_context_for_runtime_metrics = None
+
 
 DEFAULT_CRAWL_LOOP_DURATION = 15 * 60
 
@@ -74,7 +79,12 @@ def intelligence_crawler_exception_handler(
         e: Exception,
         context: CrawlContext
 ):
-    pass
+    context.record_runtime_metric(
+        group='',
+        source_url=url,
+        event_type='crawl_failure',
+        message=str(e),
+    )
 
 
 class CommonIntelligenceCrawlFlow:
@@ -93,8 +103,15 @@ class CommonIntelligenceCrawlFlow:
         local_crawler_config['d_fetcher_init_param']['proxy'] = http_proxy
         local_crawler_config['e_fetcher_init_param']['proxy'] = http_proxy
 
+        if configure_context_for_runtime_metrics:
+            configure_context_for_runtime_metrics(
+                self.crawl_context,
+                local_crawler_config.get('entry_points', {})
+            )
+
         local_crawler_config['article_filter'] = partial(intelligence_crawler_filter, context=self.crawl_context)
         local_crawler_config['content_handler'] = partial(intelligence_crawler_result_handler, context=self.crawl_context)
+        local_crawler_config['exception_handler'] = partial(intelligence_crawler_exception_handler, context=self.crawl_context)
 
         # Check and submit cached data.
         self.crawl_context.submit_cached_data(10)
