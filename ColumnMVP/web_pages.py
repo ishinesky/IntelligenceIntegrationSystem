@@ -13,7 +13,7 @@ def create_column_admin_blueprint(
     login_required: Optional[ViewDecorator] = None,
     url_prefix: str = "",
 ) -> Blueprint:
-    """Create page routes for managing OPC dynamic columns."""
+    """Create page routes for managing OPC dynamic columns and resource views."""
     secure = login_required or (lambda fn: fn)
     bp = Blueprint("opc_column_pages", __name__, url_prefix=url_prefix)
 
@@ -51,6 +51,21 @@ def create_column_admin_blueprint(
     @secure
     def opc_article_lookup():
         return render_template("opc_article_lookup.html")
+
+    @bp.get("/opc-resource")
+    @secure
+    def opc_resource_home():
+        return render_template("opc_resource_portal.html")
+
+    @bp.get("/opc-resource/columns/<column_id>")
+    @secure
+    def opc_resource_column(column_id: str):
+        return render_template("opc_resource_column.html", column_id=column_id)
+
+    @bp.get("/opc-resource/reviews/<review_id>")
+    @secure
+    def opc_resource_review(review_id: str):
+        return render_template("opc_resource_review.html", review_id=review_id)
 
     return bp
 
