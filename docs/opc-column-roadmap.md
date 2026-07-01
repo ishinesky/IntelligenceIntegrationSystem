@@ -53,25 +53,34 @@ The current implementation is intentionally staged to keep the crawler safe and 
 - Browser page for runtime metrics.
 - Runtime score and recommendation based on observed events.
 
-## Next: Runtime integration hooks
+### PR #8: Runtime integration hooks
+
+- Dynamic-column runtime hook helpers.
+- Runtime source mapping from crawler config entry points.
+- Automatic article metric recording on successful submission.
+- Automatic failure/skipped metric recording on process exceptions.
+- Metrics are best-effort and never break crawling.
+
+## Next: Runtime metric accuracy improvements
 
 Target flow:
 
 ```text
-CommonIntelligenceCrawlFlow / CrawlContext
-  -> crawl success / failure
-  -> article count
+CrawlPipeline internals
+  -> discovered count
+  -> fetched count
+  -> extracted count
   -> duplicate count
-  -> source runtime metric events
-  -> source quality loop
+  -> elapsed time
+  -> richer runtime metric events
 ```
 
 Recommended implementation:
 
 ```text
-ColumnMVP/runtime_hooks.py
-Workflow/CommonFlowUtility.py integration point
-Workflow/IntelligenceCrawlFlow.py event emission
+IntelligenceCrawler.CrawlPipeline instrumentation
+CrawlerGovernanceCore runtime adapter
+ColumnMVP/source_runtime_metrics.py enrichment
 ```
 
 ## Later: Editorial publishing
