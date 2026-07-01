@@ -42,6 +42,11 @@ def create_column_admin_blueprint(
     def opc_editorial_reviews():
         return render_template("opc_editorial_reviews.html")
 
+    @bp.get("/opc-columns/editorial-generation")
+    @secure
+    def opc_editorial_generation():
+        return render_template("opc_editorial_generation.html")
+
     return bp
 
 
