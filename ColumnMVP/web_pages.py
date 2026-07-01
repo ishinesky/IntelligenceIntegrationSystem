@@ -32,6 +32,11 @@ def create_column_admin_blueprint(
     def opc_source_quality():
         return render_template("opc_source_quality.html")
 
+    @bp.get("/opc-columns/runtime-metrics")
+    @secure
+    def opc_runtime_metrics():
+        return render_template("opc_runtime_metrics.html")
+
     return bp
 
 

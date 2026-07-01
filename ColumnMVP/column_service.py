@@ -8,6 +8,7 @@ from .models import ColumnConfig, SourceConfig, TopicBrief
 from .source_candidate_service import SourceCandidateService
 from .source_discovery import build_search_queries, candidates_from_urls
 from .source_quality import SourceQualityService
+from .source_runtime_metrics import SourceRuntimeMetricService
 from .source_validator import validate_and_update, validate_source
 from .topic_builder import build_column_from_topic
 
@@ -36,10 +37,12 @@ class ColumnService:
         store: Optional[ColumnStore] = None,
         candidate_service: Optional[SourceCandidateService] = None,
         quality_service: Optional[SourceQualityService] = None,
+        runtime_metric_service: Optional[SourceRuntimeMetricService] = None,
     ):
         self.store = store or ColumnStore()
         self.candidate_service = candidate_service or SourceCandidateService()
         self.quality_service = quality_service or SourceQualityService()
+        self.runtime_metric_service = runtime_metric_service or SourceRuntimeMetricService()
 
     # ------------------------------ topic / creation ------------------------------
 
@@ -198,6 +201,17 @@ class ColumnService:
     def audit_source_quality(self, column_id: str, *, live_validate: bool = True) -> Dict[str, Any]:
         column = self.store.load(column_id)
         return self.quality_service.audit_column_sources(column, live_validate=live_validate)
+
+    # ------------------------------ runtime metrics ------------------------------
+
+    def record_source_runtime_metric(self, column_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        event_payload = dict(payload)
+        event_payload["column_id"] = column_id
+        return self.runtime_metric_service.record_event(event_payload)
+
+    def get_source_runtime_metrics(self, column_id: str) -> Dict[str, Any]:
+        column = self.store.load(column_id)
+        return self.runtime_metric_service.summarize_column(column)
 
     # ------------------------------ crawl preview ------------------------------
 

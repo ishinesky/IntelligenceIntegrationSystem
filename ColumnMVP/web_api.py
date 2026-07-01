@@ -190,6 +190,31 @@ def create_column_blueprint(
             traceback.print_exc()
             return _json_error(str(exc), 500)
 
+    @bp.get("/<column_id>/source-runtime-metrics")
+    @secure
+    def source_runtime_metrics(column_id: str):
+        try:
+            return jsonify({"success": True, "data": column_service.get_source_runtime_metrics(column_id)})
+        except FileNotFoundError:
+            return _json_error("column not found", 404)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
+    @bp.post("/<column_id>/source-runtime-metrics")
+    @secure
+    def record_source_runtime_metric(column_id: str):
+        try:
+            payload = request.get_json(force=True) or {}
+            return jsonify({"success": True, "data": column_service.record_source_runtime_metric(column_id, payload)}), 201
+        except ValueError as exc:
+            return _json_error(str(exc), 400)
+        except FileNotFoundError:
+            return _json_error("column not found", 404)
+        except Exception as exc:
+            traceback.print_exc()
+            return _json_error(str(exc), 500)
+
     @bp.get("/<column_id>/crawler-config")
     @secure
     def crawler_config_preview(column_id: str):
