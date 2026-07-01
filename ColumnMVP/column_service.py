@@ -8,6 +8,7 @@ from .dynamic_crawler_config import build_crawler_config
 from .editorial_generation import EditorialGenerationService
 from .editorial_review import EditorialReviewService
 from .models import ColumnConfig, SourceConfig, TopicBrief
+from .public_portal import OPCPublicPortalService
 from .source_candidate_service import SourceCandidateService
 from .source_discovery import build_search_queries, candidates_from_urls
 from .source_quality import SourceQualityService
@@ -44,6 +45,7 @@ class ColumnService:
         editorial_service: Optional[EditorialReviewService] = None,
         editorial_generation_service: Optional[EditorialGenerationService] = None,
         article_lookup_service: Optional[ArticleLookupService] = None,
+        public_portal_service: Optional[OPCPublicPortalService] = None,
     ):
         self.store = store or ColumnStore()
         self.candidate_service = candidate_service or SourceCandidateService()
@@ -52,6 +54,10 @@ class ColumnService:
         self.editorial_service = editorial_service or EditorialReviewService()
         self.editorial_generation_service = editorial_generation_service or EditorialGenerationService(self.editorial_service)
         self.article_lookup_service = article_lookup_service or ArticleLookupService()
+        self.public_portal_service = public_portal_service or OPCPublicPortalService(
+            column_store=self.store,
+            editorial_service=self.editorial_service,
+        )
 
     # ------------------------------ topic / creation ------------------------------
 
@@ -254,6 +260,38 @@ class ColumnService:
     def generate_editorial_review_from_article(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         generation_payload = self.article_lookup_service.build_generation_payload(payload)
         return self.generate_editorial_review(generation_payload)
+
+    # ------------------------------ public portal ------------------------------
+
+    def public_columns(self, *, include_disabled: bool = False) -> Dict[str, Any]:
+        return self.public_portal_service.list_columns(include_disabled=include_disabled)
+
+    def public_feed(self, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        payload = payload or {}
+        return self.public_portal_service.list_feed(
+            column_id=str(payload.get("column_id", "")),
+            keyword=str(payload.get("keyword", "")),
+            status=str(payload.get("status", "published,reviewed")),
+            min_quality=float(payload.get("min_quality", 0) or 0),
+            min_actionability=float(payload.get("min_actionability", 0) or 0),
+            limit=int(payload.get("limit", 50) or 50),
+        )
+
+    def public_column_detail(self, column_id: str) -> Dict[str, Any]:
+        return self.public_portal_service.get_column(column_id)
+
+    def public_review_detail(self, review_id: str) -> Dict[str, Any]:
+        return self.public_portal_service.get_review_detail(review_id)
+
+    def public_rss(self, payload: Optional[Dict[str, Any]] = None) -> str:
+        payload = payload or {}
+        return self.public_portal_service.build_rss(
+            base_url=str(payload.get("base_url", "")),
+            column_id=str(payload.get("column_id", "")),
+            keyword=str(payload.get("keyword", "")),
+            limit=int(payload.get("limit", 30) or 30),
+            title=str(payload.get("title", "OPC Resource Feed")),
+        )
 
     # ------------------------------ crawl preview ------------------------------
 
